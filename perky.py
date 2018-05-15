@@ -5,6 +5,7 @@
 # dedent to level of first ending '''
 #
 
+import re
 import shlex
 import sys
 import textwrap
@@ -62,12 +63,16 @@ def _read_textblock(lines, marker):
     l = []
     while lines:
         line = lines.pop()
-        if line.strip() == marker:
+        stripped = line.strip()
+        if stripped == marker:
             break
         l.append(line)
-    s = "\n".join(l)
-    s = textwrap.dedent(s)
-    s = "\n".join(line.rstrip() for line in s.split("\n"))
+    prefix = line.partition(stripped)[0]
+    s = "\n".join(line.rstrip() for line in l)
+    if prefix:
+        # this one line does all the
+        # heavy lifting in textwrap.dedent()
+        s = re.sub(r'(?m)^' + prefix, '', s)
     while s.startswith("\n"):
         s = s[1:]
     return s
