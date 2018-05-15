@@ -4,6 +4,16 @@
 #
 # define (and explicitly parse) the semantics
 # for \ quoting in single-quoted strings
+#
+# this:
+#   x = transform(o, fn)
+# should work.  aka, the transformation shouldn't
+# have to be a dict, it could just be a fn.
+# in which case this is the same as x = fn(o).
+#
+# perky dicts must always have all-str keys!
+
+
 
 import re
 import shlex
