@@ -2,8 +2,6 @@
 
 # TODO:
 #
-# aaaaaand now rename to load/loads dump/dumps *sob*
-#
 # define (and explicitly parse) the semantics
 # for \ quoting in single-quoted strings
 
@@ -81,7 +79,7 @@ def _read_textblock(lines, marker):
         s = s[1:]
     return s
 
-def parse(s):
+def loads(s):
     lines = s.split("\n")
     lines.reverse()
     return _read_dict(lines)
@@ -167,15 +165,27 @@ class Serializer:
             return
         return self.serialize_quoted_string(value)
 
-def serialize(d):
+def dumps(d):
     s = Serializer()
     s.serialize(d)
     return s.dumps()
 
 
-def read(filename, encoding="utf-8"):
+def load(filename, encoding="utf-8"):
     with open(filename, "rt", encoding=encoding) as f:
         return parse(f.read())
+
+def dump(filename, d, encoding="utf-8"):
+    with open(filename, "wt", encoding=encoding) as f:
+        f.write(serialize(d))
+
+
+# compatibility
+parse = loads
+read = load
+serialize = dumps
+write = dump
+
 
 if 1:
     text = """
