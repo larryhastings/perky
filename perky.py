@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 
+# TODO:
+#
 # need write()
 #
-# dedent to level of first ending '''
+# aaaaaand now rename to load/loads dump/dumps *sob*
 #
+# define (and explicitly parse) the semantics
+# for \ quoting in single-quoted strings
 
 import re
 import shlex
@@ -55,6 +59,8 @@ def _read_list(lines):
         _line = line.strip()
         if _line == ']':
             break
+        if not _line or _line.startswith('#'):
+            continue
         value = _parse_value(line, lines)
         l.append(value)
     return l
@@ -81,6 +87,93 @@ def parse(s):
     lines = s.split("\n")
     lines.reverse()
     return _read_dict(lines)
+
+
+class Serializer:
+    def __init__(self, prefix="    "):
+        self.prefix = prefix
+        self.reset()
+
+    def reset(self):
+        self.indent = 0
+        self.lines = []
+        self.line = ''
+
+    def dumps(self):
+        s =  "\n".join(self.lines)
+        self.reset()
+        return s
+
+    def newline(self, s):
+        line = self.line
+        self.line = ''
+        if s:
+            line = line + s
+        if self.indent:
+            line = (self.indent * self.prefix) + line
+        self.lines.append(line)
+
+    @staticmethod
+    def quoted_string(s):
+        return shlex.quote(s)
+
+    def serialize(self, d):
+        for name, value in d.items():
+            if name != name.strip():
+                self.line = self.quoted_string(name)
+            else:
+                self.line = name
+            self.line += " = "
+            self.serialize_value(value)
+
+    def serialize_dict(self, value):
+        self.newline("{")
+        self.indent += 1
+        self.serialize(value)
+        self.newline("}")
+        self.indent -= 1
+
+    def serialize_list(self, l):
+        self.newline("[")
+        self.indent += 1
+        for value in l:
+            self.serialize_value(value)
+        self.newline("]")
+        self.indent -= 1
+
+    def serialize_quoted_string(self, s):
+        self.newline(self.quoted_string(s))
+
+    def serialize_textblock(self, s):
+        self.newline('"""')
+        self.indent += 1
+        for line in s.split("\n"):
+            self.newline(line)
+        self.newline('"""')
+        self.indent -= 1
+
+    def serialize_value(self, value):
+        if isinstance(value, dict):
+            return self.serialize_dict(value)
+        if isinstance(value, list):
+            return self.serialize_list(value)
+
+        value = str(value)
+        if '\n' in value:
+            return self.serialize_textblock(value)
+        if ((value == value.strip())
+            and (not value.startswith(('"', "'")))
+            and (not value.endswith(  ('"', "'")))
+            ):
+            self.newline(value)
+            return
+        return self.serialize_quoted_string(value)
+
+def serialize(d):
+    s = Serializer()
+    s.serialize(d)
+    return s.dumps()
+
 
 def read(filename, encoding="utf-8"):
     with open(filename, "rt", encoding=encoding) as f:
@@ -120,7 +213,9 @@ if 1:
 
     """
 
-    print(parse(text))
+    d = parse(text)
+    print(d)
+    print(serialize(d))
 
 
 constmap = {
@@ -168,4 +263,11 @@ if 1:
     result = transform(o, schema)
     import pprint
     pprint.pprint(result)
+
+    print("SER 1")
+    print(serialize(o))
+    print("SER 2")
+    print(serialize(result))
+    print("END")
+
 
