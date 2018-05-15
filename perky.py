@@ -2,8 +2,6 @@
 
 # TODO:
 #
-# need write()
-#
 # aaaaaand now rename to load/loads dump/dumps *sob*
 #
 # define (and explicitly parse) the semantics
@@ -177,7 +175,7 @@ def serialize(d):
 
 def read(filename, encoding="utf-8"):
     with open(filename, "rt", encoding=encoding) as f:
-        parse(f.read())
+        return parse(f.read())
 
 if 1:
     text = """
@@ -256,6 +254,79 @@ def transform(o, schema):
         return newlist
     return schema(o)
 
+class _AnnotateSchema:
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.head = []
+        self.tail = []
+
+    def crawl(self, value, name=''):
+        if isinstance(value, dict):
+            self.head.append(name + "{")
+            self.tail.append('}')
+            d = value
+            for name, value in d.items():
+                self.crawl(value, name)
+            self.head.pop()
+            self.tail.pop()
+            return
+
+        if isinstance(value, list):
+            self.head.append(name + "[")
+            self.tail.append(']')
+            self.crawl(value[0])
+            self.head.pop()
+            self.tail.pop()
+            return
+
+        assert callable(value), "value " + repr(value) + " is not callable!"
+        required = getattr(value, "_perky_required", None)
+        if required:
+            s = "".join(self.head) + name + "".join(reversed(self.tail))
+            required[0] = s
+            required[1] = False
+
+class UnspecifiedRequiredValues(Exception):
+    def __init__(self, breadcrumbs):
+        self.breadcrumbs = breadcrumbs
+
+    def __repr__(self):
+        breadcrumbs = " ".join(shlex.quote(s) for s in self.breadcrumbs)
+        return f"<UnspecifiedRequiredValues {breadcrumbs}>"
+
+    def __str__(self):
+        return repr(self)
+
+class Required:
+    def __init__(self):
+        self.options = {}
+
+    def annotate(self, schema):
+        annotator = _AnnotateSchema()
+        annotator.crawl(schema)
+
+    def __call__(self, fn):
+        token = object()
+        l = ['', False]
+        self.options[token] = l
+        def wrapper(o):
+            l[1] = True
+            return fn(o)
+        wrapper._perky_required = l
+        return wrapper
+
+    def verify(self):
+        failed = []
+        for breadcrumb, value in self.options.values():
+            if not value:
+                failed.append(breadcrumb)
+        if failed:
+            failed.sort()
+            raise UnspecifiedRequiredValues(failed)
+
+
 if 1:
     o = {'a': '3', 'b': '5.0', 'c': ['1', '2', 'None', '3'], 'd': { 'e': 'f', 'g': 'True'}}
     schema = {'a': int, 'b': float, 'c': [nullable(int)], 'd': { 'e': str, 'g': const }}
@@ -264,10 +335,26 @@ if 1:
     import pprint
     pprint.pprint(result)
 
-    print("SER 1")
-    print(serialize(o))
-    print("SER 2")
-    print(serialize(result))
-    print("END")
+    print("REQUIRED 1")
+    r = Required()
+    schema = {
+        'a': r(int),
+        'b': r(float),
+        'c': [nullable(int)],
+        'd': {
+            'e': r(str),
+            'g': const
+            }
+        }
+    r.annotate(schema)
+    print("schema", schema)
+    result = transform(o, schema)
+    print(result)
+    r.verify()
 
+    print("REQUIRED 2")
+    r.annotate(schema)
+    o2 = {'a': '44'}
+    result = transform(o2, schema)
+    r.verify()
 
