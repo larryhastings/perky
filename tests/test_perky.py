@@ -1,3 +1,16 @@
+#!/usr/bin/env python3
+
+# use a crowbar on sys.path
+# to let this script import perky
+# without any additional work
+assert __name__ == "__main__"
+import os.path
+from os.path import abspath, dirname
+import sys
+perky_dir = dirname(dirname(abspath(sys.argv[0])))
+sys.path.insert(0, perky_dir)
+os.chdir(perky_dir + "/tests")
+
 import perky
 import unittest
 
@@ -62,7 +75,7 @@ class TestParseMethods(unittest.TestCase):
 
     # TODO: check if there are any other formats that would cause a failure
     def test_read_file(self):
-        test_input = perky.read("tests/test_input.txt", encoding="utf-8")
+        test_input = perky.read("test_input.txt", encoding="utf-8")
         self.assertIsNotNone(self, test_input)
 
     def test_transform_dict(self):

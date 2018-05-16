@@ -321,25 +321,24 @@ class UnspecifiedRequiredValues(Exception):
 
 class Required:
     def __init__(self):
-        self.options = {}
+        self.markers = []
 
     def annotate(self, schema):
         annotator = _AnnotateSchema()
         annotator.crawl(schema)
 
     def __call__(self, fn):
-        token = object()
-        l = ['', False]
-        self.options[token] = l
+        marker = ['', False]
+        self.markers.append(marker)
         def wrapper(o):
-            l[1] = True
+            marker[1] = True
             return fn(o)
-        wrapper._perky_required = l
+        wrapper._perky_required = marker
         return wrapper
 
     def verify(self):
         failed = []
-        for breadcrumb, value in self.options.values():
+        for breadcrumb, value in self.markers:
             if not value:
                 failed.append(breadcrumb)
         if failed:
@@ -347,7 +346,7 @@ class Required:
             raise UnspecifiedRequiredValues(failed)
 
 
-if 1:
+if 0:
     o = {'a': '3', 'b': '5.0', 'c': ['1', '2', 'None', '3'], 'd': { 'e': 'f', 'g': 'True'}}
     schema = {'a': int, 'b': float, 'c': [nullable(int)], 'd': { 'e': str, 'g': const }}
 
