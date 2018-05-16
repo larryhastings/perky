@@ -1,0 +1,28 @@
+a = b
+c = d
+dict = {
+    inner1=value1
+      inner 2 = " value 2  "
+      list = [
+
+      a
+        b
+
+    c
+        ]
+}
+
+list = [
+
+    1
+    2
+    3
+]
+
+text = '''
+    hello
+
+    this is indented
+
+    etc.
+    '''
