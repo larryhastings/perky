@@ -12,10 +12,6 @@
 #
 # make sure a quoted # works as a key
 #
-# triple-quote string should complain if
-# there are non-space characters to the
-# left of the triple quote
-#
 # triple-quote string should only
 #    * strip first leading \n
 #    * strip last trailing \n
@@ -39,6 +35,7 @@ import re
 import shlex
 import sys
 import textwrap
+from . import tokenize
 
 class PerkyFormatError(Exception):
     pass
@@ -115,8 +112,8 @@ def _read_textblock(lines, marker):
                 raise PerkyFormatError("Text in triple-quoted block before left margin")
 
     s = "\n".join(line.rstrip() for line in l)
-        # this one line does all the
-        # heavy lifting in textwrap.dedent()
+    # this one line does all the
+    # heavy lifting in textwrap.dedent()
     s = re.sub(r'(?m)^' + prefix, '', s)
     while s.startswith("\n"):
         s = s[1:]
@@ -232,7 +229,7 @@ serialize = dumps
 write = dump
 
 
-if 1:
+if 0:
     text = """
 
     a = b
