@@ -48,6 +48,40 @@ text = '''
 
 """
 
+TEST_INPUT_TEXT_TRIPLE_Q_ERROR = """
+
+a = b
+c = d
+dict = {
+    inner1=value1
+      inner 2 = " value 2  "
+      list = [
+
+      a
+        b
+
+    c
+        ]
+}
+
+list = [
+
+    1
+    2
+    3
+]
+
+text = '''
+    hello
+
+    this is indented
+
+    etc.
+        '''
+
+"""
+
+
 TEST__PARSE_OUTPUT = {
                 'a': 'b', 'c': 'd', 'dict': {'inner1': 'value1', 'inner 2': ' value 2  ', 'list': ['a', 'b', 'c']},
                 'list': ['1', '2', '3'],
@@ -73,7 +107,12 @@ class TestParseMethods(unittest.TestCase):
         with self.assertRaises(AttributeError):
             perky.parse(3)
 
-    # TODO: check if there are any other formats that would cause a failure
+# TODO: add code changes to perky.py to raise an assertion error.
+    def test_parse_trip_q_error(self):
+        test = perky.parse(TEST_INPUT_TEXT_TRIPLE_Q_ERROR)
+        self.assertEqual(test, TEST__PARSE_OUTPUT)
+
+# TODO: check if there are any other formats that would cause a failure
     def test_read_file(self):
         test_input = perky.read("test_input.txt", encoding="utf-8")
         self.assertIsNotNone(self, test_input)
