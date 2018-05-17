@@ -109,8 +109,8 @@ class TestParseMethods(unittest.TestCase):
 
 # TODO: add code changes to perky.py to raise an assertion error.
     def test_parse_trip_q_error(self):
-        test = perky.parse(TEST_INPUT_TEXT_TRIPLE_Q_ERROR)
-        self.assertEqual(test, TEST__PARSE_OUTPUT)
+        with self.assertRaises(perky.PerkyFormatError):
+            perky.parse(TEST_INPUT_TEXT_TRIPLE_Q_ERROR)
 
 # TODO: check if there are any other formats that would cause a failure
     def test_read_file(self):
