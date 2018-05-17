@@ -117,7 +117,7 @@ def _read_textblock(lines, marker):
     s = "\n".join(line.rstrip() for line in l)
         # this one line does all the
         # heavy lifting in textwrap.dedent()
-        s = re.sub(r'(?m)^' + prefix, '', s)
+    s = re.sub(r'(?m)^' + prefix, '', s)
     while s.startswith("\n"):
         s = s[1:]
     return s
