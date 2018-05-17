@@ -4,14 +4,34 @@
 #
 # define (and explicitly parse) the semantics
 # for \ quoting in single-quoted strings
+#   * reuse the python tokenizer!
+#   * don't auto-merge multiple string literals,
+#     the only supported things are
+#           list of ids = a
+#           "single quoted string" = b
 #
-# this:
-#   x = transform(o, fn)
-# should work.  aka, the transformation shouldn't
-# have to be a dict, it could just be a fn.
-# in which case this is the same as x = fn(o).
+# make sure a quoted # works as a key
 #
-# perky dicts must always have all-str keys!
+# triple-quote string should complain if
+# there are non-space characters to the
+# left of the triple quote
+#
+# triple-quote string should only
+#    * strip first leading \n
+#    * strip last trailing \n
+#    * strip trailing non-\n whitespace on last line
+#
+# More library utility functions to manage
+# perky dict/lists:
+# * A unary "transform" function--instead of a
+#   whole schema, just a single function
+# * recursive "chain map"
+# * recursive merge
+#
+# Per-line callback function (for #include)
+#
+# Ensure you can use multiple Required objects
+# with the same function (e.g. "int")
 
 
 
@@ -19,6 +39,10 @@ import re
 import shlex
 import sys
 import textwrap
+
+class PerkyFormatError(Exception):
+    pass
+
 
 def _parse_value(value, lines):
     value = value.strip()
@@ -52,6 +76,7 @@ def _read_dict(lines):
         if line == "}":
             break
         name, equals, value = line.partition('=')
+
         assert equals, "no equals found on line " + repr(line)
         name = name.strip()
         value = _parse_value(value, lines)
@@ -80,8 +105,16 @@ def _read_textblock(lines, marker):
             break
         l.append(line)
     prefix = line.partition(stripped)[0]
-    s = "\n".join(line.rstrip() for line in l)
     if prefix:
+        # detect this error:
+        #    a = '''
+        #       outdenting is fun
+        #          '''
+        for line in l:
+            if line.strip() and not line.startswith(prefix):
+                raise PerkyFormatError("Text in triple-quoted block before left margin")
+
+    s = "\n".join(line.rstrip() for line in l)
         # this one line does all the
         # heavy lifting in textwrap.dedent()
         s = re.sub(r'(?m)^' + prefix, '', s)
@@ -125,6 +158,8 @@ class Serializer:
 
     def serialize(self, d):
         for name, value in d.items():
+            if not isinstance(name, str):
+                raise RuntimeError("keys in perky dicts must always be strings!")
             if name != name.strip():
                 self.line = self.quoted_string(name)
             else:
