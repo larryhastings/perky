@@ -107,6 +107,9 @@ class TestParseMethods(unittest.TestCase):
 # perky.loads
 # perky.dumps
 # perky.requires
+#
+# perky.transform(list, list)
+# perky.transform('a', str)
 
 # if 1:
 #     o = {'a': '3', 'b': '5.0', 'c': ['1', '2', 'None', '3'], 'd': { 'e': 'f', 'g': 'True'}}
