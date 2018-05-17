@@ -1,6 +1,9 @@
 #
 # tokenize.py
 #
+# Part of the "perky" Python library
+# Copyright 2018 by Larry Hastings
+#
 
 WHITESPACE = 'whitespace'
 UNQUOTED_STRING = 'unquoted string'

@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+#
+# Part of the "perky" Python library
+# Copyright 2018 by Larry Hastings
+#
+
 
 # TODO:
 #
