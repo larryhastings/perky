@@ -64,17 +64,12 @@ def _next_line(lines):
         line = lines.pop().strip()
         if not line:
             continue
-        if line.startswith("#"):
-            continue
-        return line
+        yield line
     return None
 
 def _read_dict(lines):
     d = {}
-    while lines:
-        line = _next_line(lines)
-        if not line:
-            break
+    for line in _next_line(lines):
         if line == "}":
             break
         name, equals, value = line.partition('=')

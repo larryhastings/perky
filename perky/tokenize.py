@@ -5,13 +5,14 @@
 # Copyright 2018 by Larry Hastings
 #
 
-WHITESPACE = 'whitespace'
-UNQUOTED_STRING = 'unquoted string'
-QUOTED_STRING = 'quoted string'
+# WHITESPACE = 'whitespace'
+STRING = 'string'
 EQUALS = '='
 LEFT_CURLY_BRACE = '{'
 LEFT_SQUARE_BRACKET = '['
 COMMENT = '#'
+TRIPLE_SINGLE_QUOTE = "'''"
+TRIPLE_DOUBLE_QUOTE = '"""'
 
 s_to_token = {
     '=': EQUALS,
@@ -95,20 +96,26 @@ def tokenize(s):
 
     def parse_unquoted_string():
         """
-        Parse an unquoted string, aka an "identifier" in
-        most langauges.  Returns the unquoted string parsed.
+        Parse an unquoted string.  In Perky, this is a string
+        without quote marks, but *with* spaces.  The string
+        stops at the first (unquoted) equals sign.
+
+        The first character of an unquoted string cannot be
+        a quote character.  After that, quote characters
+        are permitted, e.g.
+            that's a nice hat
+
+        Returns the unquoted string parsed.
         If there were no characters to be read, returns an
         empty string.
         """
         buffer = []
         for c in i:
-            if c in '"\'':
-                raise RuntimeError("quote character used in unquoted string")
-            if c.isspace() or (c == '='):
+            if (c == '='):
                 i.push(c)
                 break
             buffer.append(c)
-        return "".join(buffer)
+        return "".join(buffer).rstrip()
 
     def parse_quoted_string(quote):
         """
@@ -207,9 +214,7 @@ def tokenize(s):
     #     print(parse_unquoted_string())
     # for j in range(8):
     while i:
-        ws = skip_whitespace()
-        if ws:
-            yield WHITESPACE, ws
+        skip_whitespace()
         try:
             c = next(i)
         except StopIteration:
@@ -221,18 +226,17 @@ def tokenize(s):
             continue
 
         if c in '"\'':
-            yield QUOTED_STRING, parse_quoted_string(c)
+            yield STRING, parse_quoted_string(c)
             continue
 
         if c == '#':
             comment = i.drain()
-            print(i)
             yield COMMENT, comment
             continue
 
         i.push(c)
         s = parse_unquoted_string()
-        yield UNQUOTED_STRING, s
+        yield STRING, s
 
 if __name__ == "__main__":
     def test(s):
