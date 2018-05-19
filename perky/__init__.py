@@ -2,25 +2,9 @@
 #
 # Part of the "perky" Python library
 # Copyright 2018 by Larry Hastings
-#
 
 
 # TODO:
-#
-# define (and explicitly parse) the semantics
-# for \ quoting in single-quoted strings
-#   * reuse the python tokenizer!
-#   * don't auto-merge multiple string literals,
-#     the only supported things are
-#           list of ids = a
-#           "single quoted string" = b
-#
-# make sure a quoted # works as a key
-#
-# triple-quote string should only
-#    * strip first leading \n
-#    * strip last trailing \n
-#    * strip trailing non-\n whitespace on last line
 #
 # More library utility functions to manage
 # perky dict/lists:
@@ -33,6 +17,15 @@
 #
 # Ensure you can use multiple Required objects
 # with the same function (e.g. "int")
+
+# TESTS NEEDED:
+#
+# this should fail:
+#    a = '''
+#       outdenting is fun
+#          '''
+#
+# make sure a quoted # works as a key
 
 
 
@@ -96,8 +89,8 @@ def _read_list(lines):
 def _read_textblock(lines, marker):
     l = []
     while lines:
-        line = lines.pop()
-        stripped = line.strip()
+        line = lines.pop().rstrip()
+        stripped = line.lstrip()
         if stripped == marker:
             break
         l.append(line)
@@ -111,12 +104,10 @@ def _read_textblock(lines, marker):
             if line.strip() and not line.startswith(prefix):
                 raise PerkyFormatError("Text in triple-quoted block before left margin")
 
-    s = "\n".join(line.rstrip() for line in l)
+    s = "\n".join(line for line in l)
     # this one line does all the
     # heavy lifting in textwrap.dedent()
     s = re.sub(r'(?m)^' + prefix, '', s)
-    while s.startswith("\n"):
-        s = s[1:]
     return s
 
 def loads(s):

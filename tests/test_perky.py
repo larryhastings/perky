@@ -107,6 +107,17 @@ class TestParseMethods(unittest.TestCase):
         with self.assertRaises(AttributeError):
             perky.parse(3)
 
+    def test_parse_triple_quote(self):
+        d = perky.parse('''
+a = """
+
+    this is flush left  
+
+    """
+note the = intentional trailing whitespace!
+''')
+        self.assertEqual(d['a'], "\nthis is flush left\n")
+
 # TODO: add code changes to perky.py to raise an assertion error.
     def test_parse_trip_q_error(self):
         with self.assertRaises(perky.PerkyFormatError):
