@@ -7,7 +7,6 @@
 
 import ast
 
-# WHITESPACE = 'whitespace'
 STRING = 'string'
 EQUALS = '='
 LEFT_CURLY_BRACE = '{'
@@ -56,13 +55,22 @@ class pushback_str_iterator:
         return s
 
 
-def tokenize(s):
+def tokenize(s, in_dict=False):
     """
-    Handles two types of lines:
+    Tokenizes a line.  Handles two types of lines:
         * lines in a dict
             name = value
         * lines in a list
             value
+
+    There's a little context smarts necessary here.
+    For a dict line, the first = delimits the name,
+    and all subsequent unquoted = are part of an
+    unquoted string (if that's the value).
+    For a list line, all = are part of the unquoted
+    string.  Similarly, if you're already in an
+    unquoted string, { and [ and ' and " and even '''
+    all aren't special.
     """
     buffer = []
     type = None
@@ -89,18 +97,31 @@ def tokenize(s):
         without quote marks, but *with* spaces.  The string
         stops at the first (unquoted) equals sign.
 
+        Returns the unquoted string parsed.
+        If there were no characters to be read, returns an
+        empty string.
+
         The first character of an unquoted string cannot be
         a quote character.  After that, quote characters
         are permitted, e.g.
             that's a nice hat
+        So, ' " [ { and even ''' and even... uh, the other
+        one (" " ") aren't special inside an unquoted string.
 
-        Returns the unquoted string parsed.
-        If there were no characters to be read, returns an
-        empty string.
+        That's fine, unquoted strings are only delimited by
+        EOL and =.  Except... = should also work in unquoted
+        strings when they are values!  This is why we have
+        this slightly-messy in_dict hack. For dict lines,
+        unquoted strings should be delimited by EOL, *and*
+        if they're the *first* token on the line they should
+        also be delimited by = .
+
         """
+        nonlocal in_dict
         buffer = []
         for c in i:
-            if (c == '='):
+            if (in_dict and c == '='):
+                in_dict = False
                 i.push(c)
                 break
             buffer.append(c)
@@ -129,12 +150,16 @@ def tokenize(s):
         return ast.literal_eval("".join(buffer))
 
 
-    # while i:
-    #     skip_whitespace()
-    #     print(parse_unquoted_string())
-    # for j in range(8):
+    # turn off in_dict after the first token
+    in_dict_countdown = 1
     while i:
         skip_whitespace()
+
+        if in_dict_countdown:
+            in_dict_countdown -= 1
+        elif in_dict:
+            in_dict = False
+
         try:
             c = next(i)
         except StopIteration:
@@ -159,9 +184,9 @@ def tokenize(s):
         yield STRING, s
 
 if __name__ == "__main__":
-    def test(s):
+    def test(s, in_dict=False):
         print("test input:", s)
-        for tok, s in tokenize(s):
+        for tok, s in tokenize(s, in_dict):
             print("  >>", tok, repr(s))
         print()
 
@@ -169,10 +194,13 @@ if __name__ == "__main__":
     test(r" # hey party people ")
     test(r""" "quoted \\u1234 string" """)
     test(r""" "quoted \\N{END OF LINE} string" """)
-    test(r""" "quoted string" = value """)
-    test(r""" "quoted string" = { """)
-    test(r""" "quoted string" = [ """)
-    test(r"x=y")
-    test(r"x={")
-    test(r"x=[")
-    test(r'''x="quoted string"''')
+    test(r""" "quoted string" = value """, True)
+    test(r""" "quoted string" = { """, True)
+    test(r""" "quoted string" = [ """, True)
+    test(r"x=y", True)
+    test(r"x={", True)
+    test(r"x=[", True)
+    test(r'''x="quoted string"''', True)
+
+    # and now, the big finish
+    test(r""" unquoted string ' " [ { = unquoted value ' " [ { = yes! """, True)
