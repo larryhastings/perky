@@ -5,6 +5,8 @@
 # Copyright 2018 by Larry Hastings
 #
 
+import ast
+
 # WHITESPACE = 'whitespace'
 STRING = 'string'
 EQUALS = '='
@@ -53,19 +55,6 @@ class pushback_str_iterator:
         self.characters.clear()
         return s
 
-
-escape_sequence_map = {
-    '\\': '\\',
-    "'": "'",
-    '"': '"',
-    'a': '\a',
-    'b': '\b',
-    'f': '\f',
-    'n': '\n',
-    'r': '\r',
-    't': '\t',
-    'v': '\v',
-}
 
 def tokenize(s):
     """
@@ -125,89 +114,20 @@ def tokenize(s):
         sequences: all the single-character ones,
         octal, and the extra-special x u U N ones.
         """
-        buffer = []
-        special = []
-        special_length = 0
+        buffer = [quote]
         backslash = False
         for c in i:
-            # print("c", repr(c))
             if backslash:
-                if backslash == '\\':
-                    # print("backslash", repr(backslash), "c", repr(c))
-                    value = escape_sequence_map.get(c, None)
-                    if value:
-                        buffer.append(value)
-                        backslash = None
-                        continue
-
-                    backslash = c
-                    if c == 'x':
-                        special_length = 2
-                        special.append('0x')
-                        continue
-                    if c in '01234567':
-                        special_length = 3
-                        special.append('0o')
-                        special.append(c)
-                        continue
-                    if c == 'u':
-                        special_length = 2
-                        special.append('"\\u')
-                        continue
-                    if c == 'U':
-                        special_length = 4
-                        special.append('"\\U')
-                        continue
-                    if c == 'N':
-                        special.append('"\\N{')
-                        continue
-                    raise RuntimeError("Unsupported escape sequence: \\" + c)
-
-                if special_length:
-                    if not c.isalnum():
-                        raise RuntimeError("Invalid character in \\" + backslash + " sequence")
-                    special.append(c)
-                    special_length -= 1
-                    if not special_length:
-                        if backslash in 'x01234567':
-                            buffer.append(chr(int("".join(special))))
-                        elif backslash in 'Uu':
-                            special.append('"')
-                            buffer.append(eval(special))
-                        special = []
-                        backslash = None
-                    continue
-
-                if backslash == 'N':
-                    if c != '{':
-                        raise RuntimeError("Invalid \\N escape sequence")
-                    backslash = c
-                    continue
-
-                if backslash == '{':
-                    special.append(c)
-                    if c != '}':
-                        continue
-                    buffer.append(eval("".join(special)))
-                    special = []
-                    backslash = None
-                    continue
-
-            if c == '\\':
-                backslash = c
+                backslash = False
+            elif c == '\\':
+                backslash = True
                 continue
-
+            buffer.append(c)
             if c == quote:
                 break
 
-            buffer.append(c)
-        else:
-            raise RuntimeError("Unterminated quoted string")
+        return ast.literal_eval("".join(buffer))
 
-        if backslash:
-            raise RuntimeError("Unfinished escape sequence " + backslash)
-
-        return "".join(buffer)
 
     # while i:
     #     skip_whitespace()
@@ -240,17 +160,19 @@ def tokenize(s):
 
 if __name__ == "__main__":
     def test(s):
+        print("test input:", s)
         for tok, s in tokenize(s):
-            print(tok, repr(s))
-        print("***")
+            print("  >>", tok, repr(s))
+        print()
 
-    test("  hey party people ")
-    test(" # hey party people ")
-    test("  \"quoted \N{END OF LINE} string\" ")
-    test("  \"quoted string\" = value ")
-    test("  \"quoted string\" = { ")
-    test("  \"quoted string\" = [ ")
-    test("x=y")
-    test("x={")
-    test("x=[")
-    test("x=\"quoted string\"")
+    test(r"  hey party people ")
+    test(r" # hey party people ")
+    test(r""" "quoted \\u1234 string" """)
+    test(r""" "quoted \\N{END OF LINE} string" """)
+    test(r""" "quoted string" = value """)
+    test(r""" "quoted string" = { """)
+    test(r""" "quoted string" = [ """)
+    test(r"x=y")
+    test(r"x={")
+    test(r"x=[")
+    test(r'''x="quoted string"''')
