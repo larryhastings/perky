@@ -6,14 +6,18 @@
 
 # TODO:
 #
+# rewrite Perky to use the tokenizer
+#
+# Per-line callback function (for #include)
+#   * and, naturally, an example callback function
+#     for you to use (aka "#include")
+#
 # More library utility functions to manage
 # perky dict/lists:
 # * A unary "transform" function--instead of a
 #   whole schema, just a single function
 # * recursive "chain map"
 # * recursive merge
-#
-# Per-line callback function (for #include)
 #
 # Ensure you can use multiple Required objects
 # with the same function (e.g. "int")
@@ -26,6 +30,11 @@
 #          '''
 #
 # make sure a quoted # works as a key
+#
+# ensure that unquoted string names can contain
+#   [ { ''' """ #
+# and unquoted string values can contain all those AND
+#   =
 
 
 
