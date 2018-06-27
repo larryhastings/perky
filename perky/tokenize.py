@@ -312,11 +312,11 @@ if __name__ == "__main__":
                 print("  >>", tok, repr(s))
             t = tokens.pop(0)
             if tok != t:
-                sys.exit("TOKEN DOESN'T MATCH, EXPECTED " + str(token_to_name[t]) + " GOT " + str(token_to_name.get(tok)))
+                sys.exit("token doesn't match, expected " + str(token_to_name[t]) + " got " + str(token_to_name.get(tok)))
             if tok in tokens_with_values:
                 v = values.pop(0)
                 if v != s:
-                    sys.exit("TOKEN VALUE DOESN'T MATCH, EXPECTED " + repr(v) + " GOT " + repr(s))
+                    sys.exit("token value doesn't match, expected " + repr(v) + " got " + repr(s))
 
         if want_print:
             print()
