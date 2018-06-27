@@ -6,19 +6,45 @@
 #
 
 import ast
+import sys
 
-STRING = 'string'
-EQUALS = '='
-LEFT_CURLY_BRACE = '{'
-LEFT_SQUARE_BRACKET = '['
-COMMENT = '#'
-TRIPLE_SINGLE_QUOTE = "'''"
-TRIPLE_DOUBLE_QUOTE = '"""'
+WHITESPACE = '<whitespace>'
+STRING = '<string>'
+EQUALS = '<equals>'
+LEFT_CURLY_BRACE = '<left_curly_brace>'
+RIGHT_CURLY_BRACE = '<right_curly_brace>'
+LEFT_SQUARE_BRACKET = '<left_square_bracket>'
+RIGHT_SQUARE_BRACKET = '<right_square_bracket>'
+COMMENT = '<comment>'
+TRIPLE_SINGLE_QUOTE = "<triple_single_quote>"
+TRIPLE_DOUBLE_QUOTE = '<triple_double_quote>'
 
-s_to_token = {
+c_to_token = {
     '=': EQUALS,
     '{': LEFT_CURLY_BRACE,
+    '}': RIGHT_CURLY_BRACE,
     '[': LEFT_SQUARE_BRACKET,
+    ']': RIGHT_SQUARE_BRACKET,
+    '#': COMMENT,
+}
+
+c_to_triple_quote = {
+    "'": TRIPLE_SINGLE_QUOTE,
+    '"': TRIPLE_DOUBLE_QUOTE,
+}
+
+
+token_to_name = {
+    WHITESPACE: "WHITESPACE",
+    STRING: "STRING",
+    EQUALS: "EQUALS",
+    LEFT_CURLY_BRACE: "LEFT_CURLY_BRACE",
+    RIGHT_CURLY_BRACE: "RIGHT_CURLY_BRACE",
+    LEFT_SQUARE_BRACKET: "LEFT_SQUARE_BRACKET",
+    RIGHT_SQUARE_BRACKET: "RIGHT_SQUARE_BRACKET",
+    COMMENT: "COMMENT",
+    TRIPLE_SINGLE_QUOTE: "TRIPLE_SINGLE_QUOTE",
+    TRIPLE_DOUBLE_QUOTE: "TRIPLE_DOUBLE_QUOTE",
 }
 
 
@@ -32,7 +58,8 @@ class pushback_str_iterator:
 
     def push(self, s):
         # print("PUSH ->", repr(s))
-        self.characters.append(s)
+        for c in s:
+            self.characters.append(c)
 
     def __next__(self):
         # print("I -> ", self.characters)
@@ -55,13 +82,46 @@ class pushback_str_iterator:
         return s
 
 
-def tokenize(s, in_dict=False):
+
+def microtokenizer(s):
+    """
+    Breaks up a string into pre-tokens for the proper tokenizer to digest.
+    """
+
+    tokens = []
+    token = []
+    score = None
+
+    def flush():
+        if token:
+            tokens.append(''.join(token))
+            token.clear()
+
+    for c in s:
+        c_score = score_character(c)
+        if score != c_score:
+            flush()
+            score = c_score
+        token.append(c)
+    flush()
+
+    return tokens
+
+
+def tokenize(s, skip_whitespace=True, in_dict=False):
     """
     Tokenizes a line.  Handles two types of lines:
         * lines in a dict
             name = value
         * lines in a list
             value
+
+    Returns a list of tokens.  Each token is a tuple
+    of length two: the first element is one of the
+    predefined tokens at the top of this file, and
+    the second is the "value" of that token (e.g
+    if the token is STRING, value is the value of
+    that string).
 
     There's a little context smarts necessary here.
     For a dict line, the first = delimits the name,
@@ -70,26 +130,10 @@ def tokenize(s, in_dict=False):
     For a list line, all = are part of the unquoted
     string.  Similarly, if you're already in an
     unquoted string, { and [ and ' and " and even '''
-    all aren't special.
+    aren't special.
     """
-    buffer = []
-    type = None
 
     i = pushback_str_iterator(s)
-
-    def skip_whitespace():
-        """
-        Skips whitespace.  Returns whitespace skipped.
-        If the next character is non-whitespace or the
-        iterator is empty, returns an empty string.
-        """
-        buffer = []
-        for c in i:
-            if not c.isspace():
-                i.push(c)
-                break
-            buffer.append(c)
-        return "".join(buffer)
 
     def parse_unquoted_string():
         """
@@ -147,60 +191,219 @@ def tokenize(s, in_dict=False):
             if c == quote:
                 break
 
-        return ast.literal_eval("".join(buffer))
+        try:
+            return ast.literal_eval("".join(buffer))
+        except SyntaxError as e:
+            print("FAILED AT BUFFER", buffer)
+            raise e
 
 
     # turn off in_dict after the first token
-    in_dict_countdown = 1
-    while i:
-        skip_whitespace()
+    in_dict_countdown = 2
+
+    def flush():
+        t = "".join(token)
+        token.clear()
+        return t
+
+    whitespace = None
+
+    for c in i:
+
+        token = [c]
+
+        if c.isspace():
+            # whitespace
+            for c in i:
+                if not c.isspace():
+                    i.push(c)
+                    break
+                token.append(c)
+            if not skip_whitespace:
+                yield WHITESPACE, flush()
+            continue
 
         if in_dict_countdown:
             in_dict_countdown -= 1
-        elif in_dict:
-            in_dict = False
+            if in_dict_countdown == 0:
+                in_dict = False
 
-        try:
-            c = next(i)
-        except StopIteration:
-            break
-
-        tok = s_to_token.get(c, None)
+        tok = c_to_token.get(c, None)
         if tok:
-            yield tok, c
+            if tok == COMMENT:
+                yield COMMENT, i.drain()
+                return
+
+            yield tok, flush()
             continue
 
-        if c in '"\'':
+        tok = c_to_triple_quote.get(c, None)
+        if tok:
+            # it's a quote character, but is it a triple-quote?
+            is_triple_quote = False
+            if i:
+                c2 = next(i)
+                if i:
+                    c3 = next(i)
+                    is_triple_quote = c == c2 == c3
+                    if not is_triple_quote:
+                        i.push(c3)
+                        i.push(c2)
+                else:
+                    i.push(c2)
+
+            if is_triple_quote:
+                # triple quote must be last thing on line (except maybe ignored trailing whitespace)
+                trailing = i.drain()
+                if trailing and not trailing.isspace():
+                    raise RuntimeError("tokenizer: found triple-quote followed by non-whitespace string " + repr(trailing))
+                yield tok, c*3
+                if trailing:
+                    yield WHITESPACE, trailing
+                return
+
             yield STRING, parse_quoted_string(c)
-            continue
-
-        if c == '#':
-            comment = i.drain()
-            yield COMMENT, comment
             continue
 
         i.push(c)
         s = parse_unquoted_string()
         yield STRING, s
 
-if __name__ == "__main__":
-    def test(s, in_dict=False):
-        print("test input:", s)
-        for tok, s in tokenize(s, in_dict):
-            print("  >>", tok, repr(s))
-        print()
+class LineParser:
 
-    test(r"  hey party people ")
-    test(r" # hey party people ")
-    test(r""" "quoted \\u1234 string" """)
-    test(r""" "quoted \\N{END OF LINE} string" """)
-    test(r""" "quoted string" = value """, True)
-    test(r""" "quoted string" = { """, True)
-    test(r""" "quoted string" = [ """, True)
-    test(r"x=y", True)
-    test(r"x={", True)
-    test(r"x=[", True)
-    test(r'''x="quoted string"''', True)
+    def __init__(self, s):
+        self._lines = s.split("\n")
+        self.lines = enumerate(self._lines)
+
+    def __iter__(self):
+        return self
+
+    def __bool__(self):
+        return bool(self.lines)
+
+    def line(self):
+        line_number, line = next(self.lines)
+        self.line_number = line_number
+        return line
+
+    def tokens(self, in_dict=False):
+        while self.lines:
+            line = self.line()
+            # print("TOKENS 221 LINE", self.line_number, repr(line))
+            sys.stdout.flush()
+            l = list(tokenize(line, skip_whitespace=True, in_dict=in_dict))
+            if l:
+                # print("LINE_NUMBER", self.line_number, "TOKENS", l)
+                sys.stdout.flush()
+                return l
+        return None
+
+    def __next__(self):
+        while self.lines:
+            yield self.tokens()
+
+
+def tokens_match(tokens, *t):
+    """
+    tokens_match(tok, STRING, EQUALS, STRING)
+    tok is a list, all subsequent arguments are tokens.
+    returns True if the tok contains that list of tokens.
+    (ignores the values of the tokens.)
+    """
+    if len(tokens) == len(t):
+        for tok, t2 in zip(tokens, t):
+            t1, value = tok
+            if t1 != t2:
+                break
+        else:
+            return True
+    return False
+
+
+if __name__ == "__main__":
+    want_print = False
+    # want_print = True
+    def test(s, *tokens_and_values, in_dict=False):
+        tokens = []
+        values = []
+        tokens_with_values = set((STRING, COMMENT))
+        expect_token = True
+        for t in tokens_and_values:
+            # print("t", t, "expect_token", expect_token)
+            is_token = token_to_name.get(t)
+            if expect_token:
+                assert is_token, "expected token, got " + str(t)
+                tokens.append(t)
+                if t in tokens_with_values:
+                    expect_token = False
+            else:
+                values.append(t)
+                expect_token = True
+        if want_print:
+            print("test input:\n\t", s, "\nshould match:\n\t", " ".join(x if x in token_to_name else repr(x) for x in tokens_and_values))
+        for tok, s in tokenize(s, in_dict):
+            if want_print:
+                print("  >>", tok, repr(s))
+            t = tokens.pop(0)
+            if tok != t:
+                sys.exit("TOKEN DOESN'T MATCH, EXPECTED " + str(token_to_name[t]) + " GOT " + str(token_to_name.get(tok)))
+            if tok in tokens_with_values:
+                v = values.pop(0)
+                if v != s:
+                    sys.exit("TOKEN VALUE DOESN'T MATCH, EXPECTED " + repr(v) + " GOT " + repr(s))
+
+        if want_print:
+            print()
+
+    test(r"hey party people ", STRING, "hey party people")
+    test(r"  hey party people ", WHITESPACE, STRING, "hey party people")
+    test(r"# hey party people ", COMMENT, " hey party people ")
+    test(r" # hey party people ", WHITESPACE, COMMENT, " hey party people ")
+    test(r""" "quoted \\u1234 string" """, WHITESPACE, STRING, "quoted \u1234 string", WHITESPACE)
+    test(r""" "quoted \\N{END OF LINE} string" """, WHITESPACE, STRING, "quoted \n string", WHITESPACE)
+    test(r""" "quoted string" = value """, WHITESPACE, STRING, "quoted string", WHITESPACE, EQUALS, WHITESPACE, STRING, "value", WHITESPACE, in_dict=True)
+    test(r""" "quoted string"=value """, WHITESPACE, STRING, "quoted string", EQUALS, STRING, "value", WHITESPACE, in_dict=True)
+    test(r""" "quoted string"={""", WHITESPACE, STRING, "quoted string", EQUALS, LEFT_CURLY_BRACE, in_dict=True)
+    test(r""" "quoted string" = {""", WHITESPACE, STRING, "quoted string", WHITESPACE, EQUALS, WHITESPACE, LEFT_CURLY_BRACE, in_dict=True)
+    test(r""" "quoted string"=[""", WHITESPACE, STRING, "quoted string", EQUALS, LEFT_SQUARE_BRACKET, in_dict=True)
+    test(r""" "quoted string" = [""", WHITESPACE, STRING, "quoted string", WHITESPACE, EQUALS, WHITESPACE, LEFT_SQUARE_BRACKET, in_dict=True)
+    test(r"x=y", STRING, "x", EQUALS, STRING, "y", in_dict=True)
+    test(r"x={", STRING, "x", EQUALS, LEFT_CURLY_BRACE, in_dict=True)
+    test(r"x=[", STRING, "x", EQUALS, LEFT_SQUARE_BRACKET, in_dict=True)
+    test(r'''x="quoted string"''', STRING, "x", EQUALS, STRING, "quoted string", in_dict=True)
 
     # and now, the big finish
-    test(r""" unquoted string ' " [ { = unquoted value ' " [ { = yes! """, True)
+    test(r""" 'quoted string' "quoted string 2" [ { = "quoted value" [ { ] } = "yes!" [{}] ''' """,
+        WHITESPACE,
+        STRING, "quoted string",
+        WHITESPACE,
+        STRING, "quoted string 2",
+        WHITESPACE,
+        LEFT_SQUARE_BRACKET,
+        WHITESPACE,
+        LEFT_CURLY_BRACE,
+        WHITESPACE,
+        EQUALS,
+        WHITESPACE,
+        STRING, "quoted value",
+        WHITESPACE,
+        LEFT_SQUARE_BRACKET,
+        WHITESPACE,
+        LEFT_CURLY_BRACE,
+        WHITESPACE,
+        RIGHT_SQUARE_BRACKET,
+        WHITESPACE,
+        RIGHT_CURLY_BRACE,
+        WHITESPACE,
+        EQUALS,
+        WHITESPACE,
+        STRING, "yes!",
+        WHITESPACE,
+        LEFT_SQUARE_BRACKET,
+        LEFT_CURLY_BRACE,
+        RIGHT_CURLY_BRACE,
+        RIGHT_SQUARE_BRACKET,
+        WHITESPACE,
+        TRIPLE_SINGLE_QUOTE,
+        WHITESPACE,
+        )

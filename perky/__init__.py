@@ -42,63 +42,62 @@ import re
 import shlex
 import sys
 import textwrap
-from . import tokenize
+from .tokenize import *
 
 class PerkyFormatError(Exception):
     pass
 
 
-def _parse_value(value, lines):
-    value = value.strip()
-    if value == "{":
-        return _read_dict(lines)
-    if value == "[":
-        return _read_list(lines)
-    if value in ("'''", '"""'):
-        return _read_textblock(lines, value)
-    value = value.strip()
-    if value.endswith(("'", '"')):
-        return " ".join(shlex.split(value))
+def _parse_value(t, lp):
+    tok, value = t
+    if tok == LEFT_CURLY_BRACE:
+        return _read_dict(lp)
+    if tok == LEFT_SQUARE_BRACKET:
+        return _read_list(lp)
+    if tok in (TRIPLE_SINGLE_QUOTE, TRIPLE_DOUBLE_QUOTE):
+        return _read_textblock(lp, value)
     return value
 
-def _next_line(lines):
-    while lines:
-        line = lines.pop().strip()
-        if not line:
-            continue
-        yield line
-    return None
 
-def _read_dict(lines):
+def _read_dict(lp):
     d = {}
-    for line in _next_line(lines):
-        if line == "}":
+    while lp:
+        tokens = lp.tokens(in_dict=True)
+        if not tokens:
             break
-        name, equals, value = line.partition('=')
 
-        assert equals, "no equals found on line " + repr(line)
-        name = name.strip()
-        value = _parse_value(value, lines)
+        if tokens_match(tokens, RIGHT_CURLY_BRACE):
+            break
+        print("read_dict TOKENS", tokens)
+        assert tokens[0][0] == STRING
+        assert tokens[1][0] == EQUALS
+
+        name = tokens[0][1].strip()
+        value = _parse_value(tokens[2], lp)
+        print(f"NAME {name!r} = VALUE {value!r}")
         d[name] = value
     return d
 
-def _read_list(lines):
+def _read_list(lp):
     l = []
-    while lines:
-        line = lines.pop()
-        _line = line.strip()
-        if _line == ']':
+    while lp:
+        tokens = lp.tokens(in_dict=True)
+        if not tokens:
             break
-        if not _line or _line.startswith('#'):
-            continue
-        value = _parse_value(line, lines)
+        print("read_list TOKENS", tokens)
+        assert len(tokens) == 1
+        token = tokens[0]
+        if token[0] == RIGHT_SQUARE_BRACKET:
+            break
+        value = _parse_value(token, lp)
         l.append(value)
     return l
 
-def _read_textblock(lines, marker):
+def _read_textblock(lp, marker):
     l = []
-    while lines:
-        line = lines.pop().rstrip()
+    print("read_textblock start, marker", marker)
+    while lp:
+        line = lp.line().rstrip()
         stripped = line.lstrip()
         if stripped == marker:
             break
@@ -111,18 +110,22 @@ def _read_textblock(lines, marker):
         #          '''
         for line in l:
             if line.strip() and not line.startswith(prefix):
+                print("RAISING PerkyFormatError")
                 raise PerkyFormatError("Text in triple-quoted block before left margin")
 
     s = "\n".join(line for line in l)
     # this one line does all the
     # heavy lifting in textwrap.dedent()
     s = re.sub(r'(?m)^' + prefix, '', s)
+    print("read_textblock returning", repr(s))
     return s
 
 def loads(s):
-    lines = s.split("\n")
-    lines.reverse()
-    return _read_dict(lines)
+    print("\n\n**LOADS**\n" + repr(s))
+    lp = LineParser(s)
+    d = _read_dict(lp)
+    print("\n\n**LOADS returning dict **\n" + repr(d) + "\n**\n")
+    return d
 
 
 class Serializer:
@@ -215,18 +218,13 @@ def dumps(d):
 
 def load(filename, encoding="utf-8"):
     with open(filename, "rt", encoding=encoding) as f:
-        return parse(f.read())
+        return loads(f.read())
 
 def dump(filename, d, encoding="utf-8"):
     with open(filename, "wt", encoding=encoding) as f:
         f.write(serialize(d))
 
 
-# compatibility
-parse = loads
-read = load
-serialize = dumps
-write = dump
 
 
 if 0:
@@ -263,7 +261,7 @@ if 0:
 
     """
 
-    d = parse(text)
+    d = loads(text)
     print(d)
     print(serialize(d))
 

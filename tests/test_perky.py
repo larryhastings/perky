@@ -92,40 +92,43 @@ TEST__PARSE_OUTPUT = {
 class TestParseMethods(unittest.TestCase):
 
     def test_parse_type(self):
-        test = perky.parse(TEST_INPUT_TEXT)
+        test = perky.loads(TEST_INPUT_TEXT)
         self.assertEqual(type(test), dict)
 
     def test_parse(self):
-        test = perky.parse(TEST_INPUT_TEXT)
+        test = perky.loads(TEST_INPUT_TEXT)
         self.assertEqual(test, TEST__PARSE_OUTPUT)
 
     def test_parse_no_input(self):
         with self.assertRaises(AttributeError):
-            perky.parse(None)
+            perky.loads(None)
 
     def test_parse_bad_input(self):
         with self.assertRaises(AttributeError):
-            perky.parse(3)
+            perky.loads(3)
 
     def test_parse_triple_quote(self):
-        d = perky.parse('''
+        d = perky.loads('''
 a = """
 
     this is flush left  
-
+    note the          ^^
+    intentional trailing whitespace!
+    don't remove it, even though I
+    know you want to.
     """
-note the = intentional trailing whitespace!
+
 ''')
         self.assertEqual(d['a'], "\nthis is flush left\n")
 
 # TODO: add code changes to perky.py to raise an assertion error.
     def test_parse_trip_q_error(self):
         with self.assertRaises(perky.PerkyFormatError):
-            perky.parse(TEST_INPUT_TEXT_TRIPLE_Q_ERROR)
+            perky.loads(TEST_INPUT_TEXT_TRIPLE_Q_ERROR)
 
 # TODO: check if there are any other formats that would cause a failure
     def test_read_file(self):
-        test_input = perky.read("test_input.txt", encoding="utf-8")
+        test_input = perky.load("test_input.txt", encoding="utf-8")
         self.assertIsNotNone(self, test_input)
 
     def test_transform_dict(self):
