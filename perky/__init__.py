@@ -61,47 +61,44 @@ def _parse_value(t, lp):
 
 def _read_dict(lp):
     d = {}
-    while lp:
-        tokens = lp.tokens(in_dict=True)
-        if not tokens:
-            break
-
+    # print("read_dict start, lp", lp)
+    for tokens in lp:
+        # print("read_dict TOKENS", tokens)
         if tokens_match(tokens, RIGHT_CURLY_BRACE):
             break
-        print("read_dict TOKENS", tokens)
+        assert len(tokens) == 3
         assert tokens[0][0] == STRING
         assert tokens[1][0] == EQUALS
 
         name = tokens[0][1].strip()
         value = _parse_value(tokens[2], lp)
-        print(f"NAME {name!r} = VALUE {value!r}")
         d[name] = value
+        # print(f"NAME {name!r} = VALUE {value!r}")
     return d
 
 def _read_list(lp):
     l = []
-    while lp:
-        tokens = lp.tokens(in_dict=True)
-        if not tokens:
+    for tokens in lp:
+        # print("read_list TOKENS", tokens)
+        if tokens_match(tokens, RIGHT_SQUARE_BRACKET):
             break
-        print("read_list TOKENS", tokens)
         assert len(tokens) == 1
         token = tokens[0]
-        if token[0] == RIGHT_SQUARE_BRACKET:
-            break
         value = _parse_value(token, lp)
         l.append(value)
+        # print(f"VALUE {value!r}")
     return l
 
 def _read_textblock(lp, marker):
     l = []
-    print("read_textblock start, marker", marker)
+    # print("read_textblock start, marker", marker)
     while lp:
         line = lp.line().rstrip()
         stripped = line.lstrip()
         if stripped == marker:
             break
         l.append(line)
+
     prefix = line.partition(stripped)[0]
     if prefix:
         # detect this error:
@@ -110,21 +107,21 @@ def _read_textblock(lp, marker):
         #          '''
         for line in l:
             if line.strip() and not line.startswith(prefix):
-                print("RAISING PerkyFormatError")
+                # print("RAISING PerkyFormatError")
                 raise PerkyFormatError("Text in triple-quoted block before left margin")
 
     s = "\n".join(line for line in l)
     # this one line does all the
     # heavy lifting in textwrap.dedent()
     s = re.sub(r'(?m)^' + prefix, '', s)
-    print("read_textblock returning", repr(s))
+    # print("read_textblock returning", repr(s))
     return s
 
 def loads(s):
-    print("\n\n**LOADS**\n" + repr(s))
+    # print("\n\n**LOADS**\n" + repr(s))
     lp = LineParser(s)
     d = _read_dict(lp)
-    print("\n\n**LOADS returning dict **\n" + repr(d) + "\n**\n")
+    # print("\n\n**LOADS returning dict **\n" + repr(d) + "\n**\n")
     return d
 
 

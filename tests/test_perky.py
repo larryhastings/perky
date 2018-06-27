@@ -111,15 +111,16 @@ class TestParseMethods(unittest.TestCase):
         d = perky.loads('''
 a = """
 
-    this is flush left  
+    this is flush left
     note the          ^^
     intentional trailing whitespace!
-    don't remove it, even though I
-    know you want to.
+
+      don't remove it, even though I
+      know you want to.
     """
 
 ''')
-        self.assertEqual(d['a'], "\nthis is flush left\n")
+        self.assertEqual(d['a'], "\nthis is flush left\nnote the          ^^\nintentional trailing whitespace!\n\n  don't remove it, even though I\n  know you want to.")
 
 # TODO: add code changes to perky.py to raise an assertion error.
     def test_parse_trip_q_error(self):

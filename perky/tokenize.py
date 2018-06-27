@@ -33,6 +33,11 @@ c_to_triple_quote = {
     '"': TRIPLE_DOUBLE_QUOTE,
 }
 
+all_operators = set(c_to_token)
+all_operators.union(c_to_triple_quote)
+all_operators.add('=')
+all_operators.add('#')
+
 
 token_to_name = {
     WHITESPACE: "WHITESPACE",
@@ -82,55 +87,21 @@ class pushback_str_iterator:
         return s
 
 
-
-def microtokenizer(s):
+def tokenize(s, skip_whitespace=True):
     """
-    Breaks up a string into pre-tokens for the proper tokenizer to digest.
-    """
+    Iterator that yields tokens from a line.
 
-    tokens = []
-    token = []
-    score = None
-
-    def flush():
-        if token:
-            tokens.append(''.join(token))
-            token.clear()
-
-    for c in s:
-        c_score = score_character(c)
-        if score != c_score:
-            flush()
-            score = c_score
-        token.append(c)
-    flush()
-
-    return tokens
-
-
-def tokenize(s, skip_whitespace=True, in_dict=False):
-    """
-    Tokenizes a line.  Handles two types of lines:
+    Handles two types of lines:
         * lines in a dict
             name = value
         * lines in a list
             value
 
-    Returns a list of tokens.  Each token is a tuple
-    of length two: the first element is one of the
-    predefined tokens at the top of this file, and
-    the second is the "value" of that token (e.g
-    if the token is STRING, value is the value of
+    Each token is a tuple of length two: the first element
+    is one of the predefined tokens at the top of this file,
+    and the second is the "value" of that token
+    (e.g if the token is STRING, value is the value of
     that string).
-
-    There's a little context smarts necessary here.
-    For a dict line, the first = delimits the name,
-    and all subsequent unquoted = are part of an
-    unquoted string (if that's the value).
-    For a list line, all = are part of the unquoted
-    string.  Similarly, if you're already in an
-    unquoted string, { and [ and ' and " and even '''
-    aren't special.
     """
 
     i = pushback_str_iterator(s)
@@ -138,34 +109,21 @@ def tokenize(s, skip_whitespace=True, in_dict=False):
     def parse_unquoted_string():
         """
         Parse an unquoted string.  In Perky, this is a string
-        without quote marks, but *with* spaces.  The string
-        stops at the first (unquoted) equals sign.
+        without quote marks, but *with* spaces.
 
         Returns the unquoted string parsed.
         If there were no characters to be read, returns an
         empty string.
 
-        The first character of an unquoted string cannot be
-        a quote character.  After that, quote characters
-        are permitted, e.g.
-            that's a nice hat
-        So, ' " [ { and even ''' and even... uh, the other
-        one (" " ") aren't special inside an unquoted string.
-
-        That's fine, unquoted strings are only delimited by
-        EOL and =.  Except... = should also work in unquoted
-        strings when they are values!  This is why we have
-        this slightly-messy in_dict hack. For dict lines,
-        unquoted strings should be delimited by EOL, *and*
-        if they're the *first* token on the line they should
-        also be delimited by = .
+        Stops the unquoted string at EOL, or the first
+        character used in Perky syntax (=, {, [, etc).
+        (If you need to use one of those inside your string,
+        use a quoted string.)
 
         """
-        nonlocal in_dict
         buffer = []
         for c in i:
-            if (in_dict and c == '='):
-                in_dict = False
+            if c in all_operators:
                 i.push(c)
                 break
             buffer.append(c)
@@ -194,12 +152,9 @@ def tokenize(s, skip_whitespace=True, in_dict=False):
         try:
             return ast.literal_eval("".join(buffer))
         except SyntaxError as e:
-            print("FAILED AT BUFFER", buffer)
+            # print("FAILED AT BUFFER", buffer)
             raise e
 
-
-    # turn off in_dict after the first token
-    in_dict_countdown = 2
 
     def flush():
         t = "".join(token)
@@ -219,14 +174,11 @@ def tokenize(s, skip_whitespace=True, in_dict=False):
                     i.push(c)
                     break
                 token.append(c)
-            if not skip_whitespace:
+            if skip_whitespace:
+                token.clear()
+            else:
                 yield WHITESPACE, flush()
             continue
-
-        if in_dict_countdown:
-            in_dict_countdown -= 1
-            if in_dict_countdown == 0:
-                in_dict = False
 
         tok = c_to_token.get(c, None)
         if tok:
@@ -269,11 +221,16 @@ def tokenize(s, skip_whitespace=True, in_dict=False):
         s = parse_unquoted_string()
         yield STRING, s
 
+
 class LineParser:
 
-    def __init__(self, s):
+    def __init__(self, s, skip_whitespace=True):
         self._lines = s.split("\n")
         self.lines = enumerate(self._lines)
+        self.skip_whitespace = skip_whitespace
+
+    def __repr__(self):
+        return f"<LineParser {self._lines}>"
 
     def __iter__(self):
         return self
@@ -286,21 +243,30 @@ class LineParser:
         self.line_number = line_number
         return line
 
-    def tokens(self, in_dict=False):
+    def tokens(self):
         while self.lines:
             line = self.line()
             # print("TOKENS 221 LINE", self.line_number, repr(line))
             sys.stdout.flush()
-            l = list(tokenize(line, skip_whitespace=True, in_dict=in_dict))
+            l = list(tokenize(line, skip_whitespace=self.skip_whitespace))
             if l:
                 # print("LINE_NUMBER", self.line_number, "TOKENS", l)
-                sys.stdout.flush()
+                # sys.stdout.flush()
                 return l
-        return None
+            if l is None:
+                return None
+            # continue
 
     def __next__(self):
-        while self.lines:
-            yield self.tokens()
+        while True:
+            t = self.tokens()
+            if t:
+                # print("LP returning tokens", t)
+                return t
+            if t is None:
+                # print("LP raising StopIteration")
+                raise StopIteration()
+            # continue
 
 
 def tokens_match(tokens, *t):
@@ -323,7 +289,7 @@ def tokens_match(tokens, *t):
 if __name__ == "__main__":
     want_print = False
     # want_print = True
-    def test(s, *tokens_and_values, in_dict=False):
+    def test(s, *tokens_and_values):
         tokens = []
         values = []
         tokens_with_values = set((STRING, COMMENT))
@@ -341,7 +307,7 @@ if __name__ == "__main__":
                 expect_token = True
         if want_print:
             print("test input:\n\t", s, "\nshould match:\n\t", " ".join(x if x in token_to_name else repr(x) for x in tokens_and_values))
-        for tok, s in tokenize(s, in_dict):
+        for tok, s in tokenize(s, skip_whitespace=False):
             if want_print:
                 print("  >>", tok, repr(s))
             t = tokens.pop(0)
@@ -361,16 +327,16 @@ if __name__ == "__main__":
     test(r" # hey party people ", WHITESPACE, COMMENT, " hey party people ")
     test(r""" "quoted \\u1234 string" """, WHITESPACE, STRING, "quoted \u1234 string", WHITESPACE)
     test(r""" "quoted \\N{END OF LINE} string" """, WHITESPACE, STRING, "quoted \n string", WHITESPACE)
-    test(r""" "quoted string" = value """, WHITESPACE, STRING, "quoted string", WHITESPACE, EQUALS, WHITESPACE, STRING, "value", WHITESPACE, in_dict=True)
-    test(r""" "quoted string"=value """, WHITESPACE, STRING, "quoted string", EQUALS, STRING, "value", WHITESPACE, in_dict=True)
-    test(r""" "quoted string"={""", WHITESPACE, STRING, "quoted string", EQUALS, LEFT_CURLY_BRACE, in_dict=True)
-    test(r""" "quoted string" = {""", WHITESPACE, STRING, "quoted string", WHITESPACE, EQUALS, WHITESPACE, LEFT_CURLY_BRACE, in_dict=True)
-    test(r""" "quoted string"=[""", WHITESPACE, STRING, "quoted string", EQUALS, LEFT_SQUARE_BRACKET, in_dict=True)
-    test(r""" "quoted string" = [""", WHITESPACE, STRING, "quoted string", WHITESPACE, EQUALS, WHITESPACE, LEFT_SQUARE_BRACKET, in_dict=True)
-    test(r"x=y", STRING, "x", EQUALS, STRING, "y", in_dict=True)
-    test(r"x={", STRING, "x", EQUALS, LEFT_CURLY_BRACE, in_dict=True)
-    test(r"x=[", STRING, "x", EQUALS, LEFT_SQUARE_BRACKET, in_dict=True)
-    test(r'''x="quoted string"''', STRING, "x", EQUALS, STRING, "quoted string", in_dict=True)
+    test(r""" "quoted string" = value """, WHITESPACE, STRING, "quoted string", WHITESPACE, EQUALS, WHITESPACE, STRING, "value", WHITESPACE)
+    test(r""" "quoted string"=value """, WHITESPACE, STRING, "quoted string", EQUALS, STRING, "value", WHITESPACE)
+    test(r""" "quoted string"={""", WHITESPACE, STRING, "quoted string", EQUALS, LEFT_CURLY_BRACE)
+    test(r""" "quoted string" = {""", WHITESPACE, STRING, "quoted string", WHITESPACE, EQUALS, WHITESPACE, LEFT_CURLY_BRACE)
+    test(r""" "quoted string"=[""", WHITESPACE, STRING, "quoted string", EQUALS, LEFT_SQUARE_BRACKET)
+    test(r""" "quoted string" = [""", WHITESPACE, STRING, "quoted string", WHITESPACE, EQUALS, WHITESPACE, LEFT_SQUARE_BRACKET)
+    test(r"x=y", STRING, "x", EQUALS, STRING, "y")
+    test(r"x={", STRING, "x", EQUALS, LEFT_CURLY_BRACE)
+    test(r"x=[", STRING, "x", EQUALS, LEFT_SQUARE_BRACKET)
+    test(r'''x="quoted string"''', STRING, "x", EQUALS, STRING, "quoted string")
 
     # and now, the big finish
     test(r""" 'quoted string' "quoted string 2" [ { = "quoted value" [ { ] } = "yes!" [{}] ''' """,
