@@ -6,7 +6,9 @@
 
 # TODO:
 #
-# rewrite Perky to use the tokenizer
+# remove asserts
+#
+# remove tokens_match
 #
 # Per-line callback function (for #include)
 #   * and, naturally, an example callback function
@@ -37,12 +39,13 @@
 #   =
 
 
-
+import ast
 import re
 import shlex
 import sys
 import textwrap
 from .tokenize import *
+from .utility import *
 
 class PerkyFormatError(Exception):
     pass
@@ -117,13 +120,6 @@ def _read_textblock(lp, marker):
     # print("read_textblock returning", repr(s))
     return s
 
-def loads(s):
-    # print("\n\n**LOADS**\n" + repr(s))
-    lp = LineParser(s)
-    d = _read_dict(lp)
-    # print("\n\n**LOADS returning dict **\n" + repr(d) + "\n**\n")
-    return d
-
 
 class Serializer:
     def __init__(self, prefix="    "):
@@ -157,7 +153,7 @@ class Serializer:
         for name, value in d.items():
             if not isinstance(name, str):
                 raise RuntimeError("keys in perky dicts must always be strings!")
-            if name != name.strip():
+            if name == name.strip() and "".join(name.split()).isalnum():
                 self.line = self.quoted_string(name)
             else:
                 self.line = name
@@ -199,13 +195,15 @@ class Serializer:
         value = str(value)
         if '\n' in value:
             return self.serialize_textblock(value)
-        if ((value == value.strip())
-            and (not value.startswith(('"', "'")))
-            and (not value.endswith(  ('"', "'")))
-            ):
+        if value == value.strip() and "".join(value.split()).isalnum():
             self.newline(value)
             return
         return self.serialize_quoted_string(value)
+
+def loads(s):
+    lp = LineParser(s)
+    d = _read_dict(lp)
+    return d
 
 def dumps(d):
     s = Serializer()
@@ -279,7 +277,15 @@ def nullable(type):
         return type(o)
     return fn
 
-def transform(o, schema):
+
+def _transform_function(o, fn):
+    if isinstance(o, dict):
+        return {name: _transform_function(value, fn) for name, value in o.items()}
+    if isinstance(o, list):
+        return [_transform_function(value, fn) for value in o]
+    return fn(o)
+
+def _transform_schema(o, schema):
     if isinstance(schema, dict):
         if not isinstance(o, dict):
             sys.exit("Schema mismatch, expected schema and o to both be dicts")
@@ -287,19 +293,22 @@ def transform(o, schema):
         for name, value in o.items():
             handler = schema.get(name)
             if handler:
-                value = transform(value, handler)
+                value = _transform_schema(value, handler)
             newdict[name] = value
         return newdict
     if isinstance(schema, list):
         if not isinstance(o, list):
             sys.exit("Schema mismatch, expected schema and o to both be lists")
-        newlist = []
         assert len(schema) == 1
         handler = schema[0]
-        for value in o:
-            newlist.append(handler(value))
-        return newlist
+        return [_transform_schema(value, handler) for value in o]
     return schema(o)
+
+def transform(o, transformation=ast.literal_eval):
+    if callable(transformation):
+        return _transform_function(o, transformation)
+    return _transform_schema(o, transformation)
+
 
 class _AnnotateSchema:
     def __init__(self):
