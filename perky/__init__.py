@@ -44,7 +44,7 @@ A simple, Pythonic file format.  Same interface as the
 "pickle" module (load, loads, dump, dumps).
 """
 
-__version__ = "0.1"
+__version__ = "0.1.1"
 
 import ast
 import re
