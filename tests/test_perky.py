@@ -142,19 +142,19 @@ a = """
     def test_transform_type_mismatch(self):
         o = {'a': '3', 'b': '5.0', 'c': ['1', '2', 'None', '3'], 'd': {'e': 'f', 'g': 'True'}}
         schema = [{'a': int, 'b': float, 'c': [perky.nullable(int)], 'd': {'e': str, 'g': perky.const}}]
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(perky.PerkyFormatError):
             perky.transform(o, schema)
 
     def test_transform_bad_obj(self):
         o2 = {'a': '44'}
         schema = [{'a': int, 'b': float, 'c': [perky.nullable(int)], 'd': {'e': str, 'g': perky.const}}]
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(perky.PerkyFormatError):
             perky.transform(o2, schema)
 
     def test_transform_none(self):
         o = None
         schema = {'a': int, 'b': float, 'c': [perky.nullable(int)], 'd': {'e': str, 'g': perky.const}}
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(perky.PerkyFormatError):
             perky.transform(o, schema)
 
     def test_default_transform(self):

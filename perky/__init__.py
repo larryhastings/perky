@@ -6,9 +6,10 @@
 
 # TODO:
 #
-# remove asserts
+# turn if 0 module-level tests into real tests, dude
 #
-# remove tokens_match
+# explicit fns for xform schema vs function
+#  * need betterer names
 #
 # Per-line callback function (for #include)
 #   * and, naturally, an example callback function
@@ -57,75 +58,89 @@ from .utility import *
 class PerkyFormatError(Exception):
     pass
 
-
-def _parse_value(t, lp):
-    tok, value = t
-    if tok == LEFT_CURLY_BRACE:
-        return _read_dict(lp)
-    if tok == LEFT_SQUARE_BRACKET:
-        return _read_list(lp)
-    if tok in (TRIPLE_SINGLE_QUOTE, TRIPLE_DOUBLE_QUOTE):
-        return _read_textblock(lp, value)
-    return value
+def assert_or_raise(*exprs):
+    exprs = list(exprs)
+    s = exprs.pop()
+    if not all(exprs):
+        raise PerkyFormatError(s)
 
 
-def _read_dict(lp):
-    d = {}
-    # print("read_dict start, lp", lp)
-    for tokens in lp:
-        # print("read_dict TOKENS", tokens)
-        if tokens_match(tokens, RIGHT_CURLY_BRACE):
-            break
-        assert len(tokens) == 3
-        assert tokens[0][0] == STRING
-        assert tokens[1][0] == EQUALS
+class Parser:
 
-        name = tokens[0][1].strip()
-        value = _parse_value(tokens[2], lp)
-        d[name] = value
-        # print(f"NAME {name!r} = VALUE {value!r}")
-    return d
+    def __init__(self, s):
+        self.lp = LineParser(s)
 
-def _read_list(lp):
-    l = []
-    for tokens in lp:
-        # print("read_list TOKENS", tokens)
-        if tokens_match(tokens, RIGHT_SQUARE_BRACKET):
-            break
-        assert len(tokens) == 1
-        token = tokens[0]
-        value = _parse_value(token, lp)
-        l.append(value)
-        # print(f"VALUE {value!r}")
-    return l
 
-def _read_textblock(lp, marker):
-    l = []
-    # print("read_textblock start, marker", marker)
-    while lp:
-        line = lp.line().rstrip()
-        stripped = line.lstrip()
-        if stripped == marker:
-            break
-        l.append(line)
+    def assert_or_raise(self, *exprs):
+        exprs = list(exprs)
+        s = exprs.pop()
+        if not all(exprs):
+            raise PerkyFormatError(f"Line {self.lp.line_number}: {s}")
 
-    prefix = line.partition(stripped)[0]
-    if prefix:
-        # detect this error:
-        #    a = '''
-        #       outdenting is fun
-        #          '''
-        for line in l:
-            if line.strip() and not line.startswith(prefix):
-                # print("RAISING PerkyFormatError")
-                raise PerkyFormatError("Text in triple-quoted block before left margin")
 
-    s = "\n".join(line for line in l)
-    # this one line does all the
-    # heavy lifting in textwrap.dedent()
-    s = re.sub(r'(?m)^' + prefix, '', s)
-    # print("read_textblock returning", repr(s))
-    return s
+    def _parse_value(self, t):
+        tok, value = t
+        if tok is LEFT_CURLY_BRACE:
+            return self._read_dict()
+        if tok is LEFT_SQUARE_BRACKET:
+            return self._read_list()
+        if (tok is TRIPLE_SINGLE_QUOTE) or (tok is TRIPLE_DOUBLE_QUOTE):
+            return self._read_textblock(value)
+        return value
+
+
+    def _read_dict(self):
+        d = {}
+        for tokens in self.lp:
+            if len(tokens) == 1 and tokens[0][0] is RIGHT_CURLY_BRACE:
+                break
+            self.assert_or_raise(
+                len(tokens) == 3 and tokens[0][0] is STRING and tokens[1][0] is EQUALS,
+                "Invalid token sequence: in dict, expected STRING = VALUE or }, line = " + repr(self.lp.line))
+            name = tokens[0][1].strip()
+            value = self._parse_value(tokens[2])
+            d[name] = value
+        return d
+
+    def _read_list(self):
+        l = []
+        for tokens in self.lp:
+            self.assert_or_raise(
+                len(tokens) == 1,
+                "Invalid token sequence: in list, expected one token, line = " + repr(self.lp.line))
+            token = tokens[0]
+            if token[0] is RIGHT_SQUARE_BRACKET:
+                break
+            value = self._parse_value(token)
+            l.append(value)
+        return l
+
+    def _read_textblock(self, marker):
+        l = []
+        while self.lp:
+            line = self.lp.next_line().rstrip()
+            stripped = line.lstrip()
+            if stripped == marker:
+                break
+            l.append(line)
+
+        prefix = line.partition(stripped)[0]
+        if prefix:
+            # detect this error:
+            #    a = '''
+            #       outdenting is fun
+            #          '''
+            for line in l:
+                self.assert_or_raise(
+                    # line must either be empty or start with our prefix
+                    (not line) or line.startswith(prefix),
+                    "Format error: malformed line triple-quoted block, line is " + repr(line))
+
+        s = "\n".join(line for line in l)
+        # this one line does all the
+        # heavy lifting in textwrap.dedent()
+        s = re.sub(r'(?m)^' + prefix, '', s)
+        return s
 
 
 class Serializer:
@@ -208,8 +223,8 @@ class Serializer:
         return self.serialize_quoted_string(value)
 
 def loads(s):
-    lp = LineParser(s)
-    d = _read_dict(lp)
+    p = Parser(s)
+    d = p._read_dict()
     return d
 
 def dumps(d):
@@ -268,6 +283,40 @@ if 0:
     print(serialize(d))
 
 
+def _transform_function(o, fn):
+    if isinstance(o, dict):
+        return {name: _transform_function(value, fn) for name, value in o.items()}
+    if isinstance(o, list):
+        return [_transform_function(value, fn) for value in o]
+    return fn(o)
+
+def _transform_schema(o, schema):
+    if isinstance(schema, dict):
+        assert_or_raise(
+            isinstance(o, dict),
+            "Schema mismatch: schema is a dict, o should be a dict but is " + repr(o))
+        newdict = {}
+        for name, value in o.items():
+            handler = schema.get(name)
+            if handler:
+                value = _transform_schema(value, handler)
+            newdict[name] = value
+        return newdict
+    if isinstance(schema, list):
+        assert_or_raise(
+            isinstance(o, list),
+            len(schema) == 1,
+            "Schema mismatch: schema is a list, o should be a list but is " + repr(o))
+        handler = schema[0]
+        return [_transform_schema(value, handler) for value in o]
+    return schema(o)
+
+def transform(o, transformation=ast.literal_eval):
+    if callable(transformation):
+        return _transform_function(o, transformation)
+    return _transform_schema(o, transformation)
+
+
 constmap = {
     'None': None,
     'True': True,
@@ -283,38 +332,6 @@ def nullable(type):
             return None
         return type(o)
     return fn
-
-
-def _transform_function(o, fn):
-    if isinstance(o, dict):
-        return {name: _transform_function(value, fn) for name, value in o.items()}
-    if isinstance(o, list):
-        return [_transform_function(value, fn) for value in o]
-    return fn(o)
-
-def _transform_schema(o, schema):
-    if isinstance(schema, dict):
-        if not isinstance(o, dict):
-            sys.exit("Schema mismatch, expected schema and o to both be dicts")
-        newdict = {}
-        for name, value in o.items():
-            handler = schema.get(name)
-            if handler:
-                value = _transform_schema(value, handler)
-            newdict[name] = value
-        return newdict
-    if isinstance(schema, list):
-        if not isinstance(o, list):
-            sys.exit("Schema mismatch, expected schema and o to both be lists")
-        assert len(schema) == 1
-        handler = schema[0]
-        return [_transform_schema(value, handler) for value in o]
-    return schema(o)
-
-def transform(o, transformation=ast.literal_eval):
-    if callable(transformation):
-        return _transform_function(o, transformation)
-    return _transform_schema(o, transformation)
 
 
 class _AnnotateSchema:
@@ -344,7 +361,9 @@ class _AnnotateSchema:
             self.tail.pop()
             return
 
-        assert callable(value), "value " + repr(value) + " is not callable!"
+        assert_or_raise(
+            callable(value),
+            "Malformed schema error: " + repr(name) + " = " + repr(value) + ", value is not dict, list, or callable!")
         required = getattr(value, "_perky_required", None)
         if required:
             s = "".join(self.head) + name + "".join(reversed(self.tail))

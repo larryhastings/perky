@@ -8,16 +8,16 @@
 import ast
 import sys
 
-WHITESPACE = '<whitespace>'
-STRING = '<string>'
-EQUALS = '<equals>'
-LEFT_CURLY_BRACE = '<left_curly_brace>'
-RIGHT_CURLY_BRACE = '<right_curly_brace>'
-LEFT_SQUARE_BRACKET = '<left_square_bracket>'
-RIGHT_SQUARE_BRACKET = '<right_square_bracket>'
-COMMENT = '<comment>'
-TRIPLE_SINGLE_QUOTE = "<triple_single_quote>"
-TRIPLE_DOUBLE_QUOTE = '<triple_double_quote>'
+WHITESPACE = '<whitespace_token>'
+STRING = '<string_token>'
+EQUALS = '<equals_token>'
+LEFT_CURLY_BRACE = '<left_curly_brace_token>'
+RIGHT_CURLY_BRACE = '<right_curly_brace_token>'
+LEFT_SQUARE_BRACKET = '<left_square_bracket_token>'
+RIGHT_SQUARE_BRACKET = '<right_square_bracket_token>'
+COMMENT = '<comment_token>'
+TRIPLE_SINGLE_QUOTE = "<triple_single_quote_token>"
+TRIPLE_DOUBLE_QUOTE = '<triple_double_quote_token>'
 
 c_to_token = {
     '=': EQUALS,
@@ -62,12 +62,10 @@ class pushback_str_iterator:
         return f'<pushback {contents!r}>'
 
     def push(self, s):
-        # print("PUSH ->", repr(s))
         for c in s:
             self.characters.append(c)
 
     def __next__(self):
-        # print("I -> ", self.characters)
         if not self.characters:
             raise StopIteration()
         return self.characters.pop()
@@ -152,7 +150,6 @@ def tokenize(s, skip_whitespace=True):
         try:
             return ast.literal_eval("".join(buffer))
         except SyntaxError as e:
-            # print("FAILED AT BUFFER", buffer)
             raise e
 
 
@@ -238,52 +235,27 @@ class LineParser:
     def __bool__(self):
         return bool(self.lines)
 
-    def line(self):
+    def next_line(self):
         line_number, line = next(self.lines)
         self.line_number = line_number
         return line
 
     def tokens(self):
         while self.lines:
-            line = self.line()
-            # print("TOKENS 221 LINE", self.line_number, repr(line))
-            sys.stdout.flush()
+            line = self.line = self.next_line()
             l = list(tokenize(line, skip_whitespace=self.skip_whitespace))
             if l:
-                # print("LINE_NUMBER", self.line_number, "TOKENS", l)
-                # sys.stdout.flush()
                 return l
             if l is None:
                 return None
-            # continue
 
     def __next__(self):
         while True:
             t = self.tokens()
             if t:
-                # print("LP returning tokens", t)
                 return t
             if t is None:
-                # print("LP raising StopIteration")
                 raise StopIteration()
-            # continue
-
-
-def tokens_match(tokens, *t):
-    """
-    tokens_match(tok, STRING, EQUALS, STRING)
-    tok is a list, all subsequent arguments are tokens.
-    returns True if the tok contains that list of tokens.
-    (ignores the values of the tokens.)
-    """
-    if len(tokens) == len(t):
-        for tok, t2 in zip(tokens, t):
-            t1, value = tok
-            if t1 != t2:
-                break
-        else:
-            return True
-    return False
 
 
 if __name__ == "__main__":
@@ -295,7 +267,6 @@ if __name__ == "__main__":
         tokens_with_values = set((STRING, COMMENT))
         expect_token = True
         for t in tokens_and_values:
-            # print("t", t, "expect_token", expect_token)
             is_token = token_to_name.get(t)
             if expect_token:
                 assert is_token, "expected token, got " + str(t)
