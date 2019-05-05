@@ -17,13 +17,14 @@
 #
 # More library utility functions to manage
 # perky dict/lists:
-# * A unary "transform" function--instead of a
-#   whole schema, just a single function
 # * recursive "chain map"
 # * recursive merge
 #
 # Ensure you can use multiple Required objects
 # with the same function (e.g. "int")
+#
+# transform exceptions should print a breadcrumb
+# trail so we know where the erroneous value lives
 
 # TESTS NEEDED:
 #
@@ -283,38 +284,48 @@ if 0:
     print(serialize(d))
 
 
-def _transform_function(o, fn):
+def map(o, fn):
     if isinstance(o, dict):
-        return {name: _transform_function(value, fn) for name, value in o.items()}
+        return {name: map(value, fn) for name, value in o.items()}
     if isinstance(o, list):
-        return [_transform_function(value, fn) for value in o]
+        return [map(value, fn) for value in o]
     return fn(o)
 
-def _transform_schema(o, schema):
+
+def _transform(o, schema, default):
     if isinstance(schema, dict):
         assert_or_raise(
             isinstance(o, dict),
-            "Schema mismatch: schema is a dict, o should be a dict but is " + repr(o))
-        newdict = {}
+            f"schema mismatch: schema is a dict, o should be a dict but is {o!r}")
+        result = {}
         for name, value in o.items():
             handler = schema.get(name)
             if handler:
-                value = _transform_schema(value, handler)
-            newdict[name] = value
-        return newdict
+                value = _transform(value, handler, default)
+            elif default:
+                value = default(value)
+            result[name] = value
+        return result
     if isinstance(schema, list):
         assert_or_raise(
             isinstance(o, list),
             len(schema) == 1,
-            "Schema mismatch: schema is a list, o should be a list but is " + repr(o))
+            f"schema mismatch: schema is a list, o should be a list but is {o!r}")
         handler = schema[0]
-        return [_transform_schema(value, handler) for value in o]
+        return [_transform(value, handler, default) for value in o]
+    assert_or_raise(
+        callable(schema),
+        f"schema mismatch: schema values must be dict, list, or callable, got {schema!r}")
     return schema(o)
 
-def transform(o, transformation=ast.literal_eval):
-    if callable(transformation):
-        return _transform_function(o, transformation)
-    return _transform_schema(o, transformation)
+def transform(o, schema, default=None):
+    assert_or_raise(
+        isinstance(o, dict),
+        "schema must be a dict")
+    assert_or_raise(
+        (not default) or callable(default),
+        "default must be either None or a callable")
+    return _transform(o, schema, default)
 
 
 constmap = {

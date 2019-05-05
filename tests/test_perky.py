@@ -157,16 +157,16 @@ a = """
         with self.assertRaises(perky.PerkyFormatError):
             perky.transform(o, schema)
 
-    def test_default_transform(self):
-        o = {'a': '3', 'b': '5.0', 'c': '7j', 'sub': {'1': '2', '2': '4.0', '3': '6j'}, 'list': ['10', '20', '30']}
-        result = perky.transform(o)
-        self.assertEqual(result['a'], 3)
-        self.assertEqual(result['b'], 5.0)
-        self.assertEqual(result['c'], 7j)
-        self.assertEqual(result['sub']['1'], 2)
-        self.assertEqual(result['sub']['2'], 4.0)
-        self.assertEqual(result['sub']['3'], 6j)
-        self.assertEqual(result['list'], [10, 20, 30])
+    # def test_default_transform(self):
+    #     o = {'a': '3', 'b': '5.0', 'c': '7j', 'sub': {'1': '2', '2': '4.0', '3': '6j'}, 'list': ['10', '20', '30']}
+    #     result = perky.transform(o)
+    #     self.assertEqual(result['a'], 3)
+    #     self.assertEqual(result['b'], 5.0)
+    #     self.assertEqual(result['c'], 7j)
+    #     self.assertEqual(result['sub']['1'], 2)
+    #     self.assertEqual(result['sub']['2'], 4.0)
+    #     self.assertEqual(result['sub']['3'], 6j)
+    #     self.assertEqual(result['list'], [10, 20, 30])
 
 # TODO: parts to test
 # perky.loads
