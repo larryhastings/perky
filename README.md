@@ -1,13 +1,13 @@
 # perky
 
-## Because the world needed another configuration file format
+## A friendly, easy, Pythonic text file format
 
-##### Copyright 2018 by Larry Hastings
+##### Copyright 2018-2019 by Larry Hastings
 
 
 ### Overview
 
-Perky is a new, simple rcfile format for Python programs.
+Perky is a new, simple "rcfile" text file format for Python programs.
 
 The following are Perky features:
 
@@ -84,16 +84,47 @@ Returns a string.
 Converts a dictionary to a Perky-file-format string
 using `perky.dump`, then writes it to *filename*.
 
-`perky.transform(d, schema) -> o`
+`perky.map(d, fn) -> o`
+
+Iterates over a dictionary.  Returns a new dictionary where,
+for every *value*:
+  * if it is a dict, replace with a new dict.
+  * if it is a list, replace with a new list.
+  * if it is neither a dict nor a list, replace with
+    `fn(value)`.
+
+The function passed in is called a *conversion function*.
+
+`perky.transform(d, schema, default=None) -> o`
 
 Recursively transforms a Perky dict into some other
 object (usually a dict) using the provided schema.
+Returns a new dict.
+
+A *schema* is a data structure matching the general expected
+shape of *d*, where the values are dicts, lists, and
+callables.  The transformation is similar to `perky.map()`
+except that individual values will have individual conversion
+functions.  Also, a schema conversion function can be specified
+for any value in *d*, even dicts or lists.
+
+*default* is a default conversion function.  If there is a
+value *v* in *d* that doesn't have an equivalent entry in *schema*,
+and *v* is neither a list nor a dict, and if *default* is
+a callable, *v* will be replaced with `default(v)` in the
+output.
 
 `perky.Required`
 
+Experimental.
+
 `perky.nullable(fn) -> fn`
 
+Experimental.
+
 `perky.const(fn) -> o`
+
+Experimental.
 
 
 ### TODO
