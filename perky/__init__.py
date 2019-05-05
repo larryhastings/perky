@@ -56,6 +56,14 @@ import textwrap
 from .tokenize import *
 from .utility import *
 
+
+__all__ = []
+
+def export(fn):
+    __all__.append(fn.__name__)
+    return fn
+
+@export
 class PerkyFormatError(Exception):
     pass
 
@@ -223,21 +231,25 @@ class Serializer:
             return
         return self.serialize_quoted_string(value)
 
+@export
 def loads(s):
     p = Parser(s)
     d = p._read_dict()
     return d
 
+@export
 def dumps(d):
     s = Serializer()
     s.serialize(d)
     return s.dumps()
 
 
+@export
 def load(filename, encoding="utf-8"):
     with open(filename, "rt", encoding=encoding) as f:
         return loads(f.read())
 
+@export
 def dump(filename, d, encoding="utf-8"):
     with open(filename, "wt", encoding=encoding) as f:
         f.write(serialize(d))
@@ -284,6 +296,7 @@ if 0:
     print(serialize(d))
 
 
+@export
 def map(o, fn):
     if isinstance(o, dict):
         return {name: map(value, fn) for name, value in o.items()}
@@ -318,6 +331,7 @@ def _transform(o, schema, default):
         f"schema mismatch: schema values must be dict, list, or callable, got {schema!r}")
     return schema(o)
 
+@export
 def transform(o, schema, default=None):
     assert_or_raise(
         isinstance(o, dict),
@@ -334,9 +348,11 @@ constmap = {
     'False': False,
 }
 
+@export
 def const(s):
     return constmap[s]
 
+@export
 def nullable(type):
     def fn(o):
         if o == 'None':
@@ -392,6 +408,7 @@ class UnspecifiedRequiredValues(Exception):
     def __str__(self):
         return repr(self)
 
+@export
 class Required:
     def __init__(self):
         self.markers = []
