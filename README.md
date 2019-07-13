@@ -59,6 +59,11 @@ and *transformation functions*.
 If you want *myvalue* in `{'myvalue':'3'}` to be a real integer,
 transform it with the schema `{'myvalue': int}`.
 
+Note that Perky doesn't care how or if you transform your
+data.  You can use it as-is, or transform it, or transform
+it with multiple passes, or use an external transformation technology like 
+[Marshmallow.](https://marshmallow.readthedocs.io/en/3.0/)
+
 ### API
 
 `perky.loads(s) -> d`
