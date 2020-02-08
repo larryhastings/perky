@@ -61,7 +61,7 @@ transform it with the schema `{'myvalue': int}`.
 
 Note that Perky doesn't care how or if you transform your
 data.  You can use it as-is, or transform it, or transform
-it with multiple passes, or use an external transformation technology like 
+it with multiple passes, or use an external transformation technology like
 [Marshmallow.](https://marshmallow.readthedocs.io/en/3.0/)
 
 ### API
@@ -88,6 +88,27 @@ Returns a string.
 
 Converts a dictionary to a Perky-file-format string
 using `perky.dump`, then writes it to *filename*.
+
+`perky.include(d, include=True, includes=False, recursive=True, encoding="utf-8") -> d`
+
+Processes `include` directives inside a dictionary.  The first
+argument `d` must be a dictionary.
+
+If `include` is True, and `d['include']` is set, the value of
+`d['include']` will be used as the first filename, see below.
+
+If `includes` is True, and `d['includes']` is set, the value of
+`d['includes']` will be used as an iterable of filenames, see below.
+
+For every filename in the list of filenames, `perky.include()` will
+`perky.load()` a dictionary from that filename, using the encoding
+passed in.  If `recursive` is set, then `perky.include()` will
+recursively process includes in those dictionaries.
+
+After processing all filenames, `perky.include()` will merge the dictionaries
+together.  The dictionaries are merged in this order: first "include",
+then "includes", then the original `d` argument.
+Returns this final merged dictionary.
 
 `perky.map(d, fn) -> o`
 

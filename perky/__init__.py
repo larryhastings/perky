@@ -6,6 +6,10 @@
 
 # TODO:
 #
+# ALLOW EMPTY KEYS
+#       foo =
+# is currently an error, it should be an empty string
+#
 # turn if 0 module-level tests into real tests, dude
 #
 # explicit fns for xform schema vs function
@@ -46,7 +50,7 @@ A simple, Pythonic file format.  Same interface as the
 "pickle" module (load, loads, dump, dumps).
 """
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 import ast
 import re
@@ -104,10 +108,13 @@ class Parser:
             if len(tokens) == 1 and tokens[0][0] is RIGHT_CURLY_BRACE:
                 break
             self.assert_or_raise(
-                len(tokens) == 3 and tokens[0][0] is STRING and tokens[1][0] is EQUALS,
-                "Invalid token sequence: in dict, expected STRING = VALUE or }, line = " + repr(self.lp.line))
+                (2 <= len(tokens) <= 3) and tokens[0][0] is STRING and tokens[1][0] is EQUALS,
+                "Invalid token sequence: in dict, expected STRING = or STRING == VALUE or }, line = " + repr(self.lp.line))
             name = tokens[0][1].strip()
-            value = self._parse_value(tokens[2])
+            if len(tokens) == 3:
+                value = self._parse_value(tokens[2])
+            else:
+                value = ""
             d[name] = value
         return d
 
@@ -340,6 +347,38 @@ def transform(o, schema, default=None):
         (not default) or callable(default),
         "default must be either None or a callable")
     return _transform(o, schema, default)
+
+
+@export
+def include(o, *, include=True, includes=False, recursive=True, encoding="utf-8"):
+    assert_or_raise(
+        isinstance(o, dict),
+        "object must be a dict")
+    filenames = []
+    dicts = []
+    remove_keys = []
+    if include and "include" in o:
+        include = o["include"]
+        if include:
+            filenames.append(include)
+        remove_keys.append("include")
+    if includes and "includes" in o:
+        includes = o.get("includes")
+        if includes:
+            filenames.extend(include)
+        remove_keys.append("includes")
+    for filename in filenames:
+        d = load(filename, encoding=encoding)
+        if recursive:
+            d = include(d, include=include, includes=includes, recursive=True, encoding=encoding)
+        dicts.append(d)
+    dicts.append(o)
+    final = dicts[0]
+    for d in dicts[1:]:
+        final.update(d)
+    for key in remove_keys:
+        del final[key]
+    return final
 
 
 constmap = {
