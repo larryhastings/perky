@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # Part of the "perky" Python library
-# Copyright 2018 by Larry Hastings
+# Copyright 2018-2020 by Larry Hastings
 
 
 class RecursiveChainMap(dict):

@@ -2,7 +2,7 @@
 # tokenize.py
 #
 # Part of the "perky" Python library
-# Copyright 2018 by Larry Hastings
+# Copyright 2018-2020 by Larry Hastings
 #
 
 import ast

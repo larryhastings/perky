@@ -2,7 +2,7 @@
 
 ## A friendly, easy, Pythonic text file format
 
-##### Copyright 2018-2019 by Larry Hastings
+##### Copyright 2018-2020 by Larry Hastings
 
 
 ### Overview
@@ -44,6 +44,8 @@ quoting.
         <-- aka here
         """
 
+    =pragma argument
+
 #### Explicit transformation is better than implicit
 
 One possibly-surprising design choice of Perky: the only
@@ -64,14 +66,62 @@ data.  You can use it as-is, or transform it, or transform
 it with multiple passes, or use an external transformation technology like
 [Marshmallow.](https://marshmallow.readthedocs.io/en/3.0/)
 
+### Pragmas
+
+A *pragma* is a metadata directive for the Perky parser.
+It's a way of sending instructions to the Perky parser from
+inside a bit of Perky text.
+
+Here's an example pragma directive:
+
+`=foo bar bat`
+
+The first word after the equals sign is the name of the pragma, in this case `"foo"`.
+Everything after the name of the pragma is an argument, with all leading
+and trailing whitespace removed, in this case `"bar bat"`.
+
+By default, Perky doesn't have any pragma handlers.  And invoking a pragma
+when Perky doesn't have a handler for it is a runtime error.
+But you can define your own pragma handlers when you call `perky.load()`
+or `perky.loads()`, using a named parameter called `pragmas`.
+If you pass in a value for `pragmas`, it must be a mapping
+of strings to functions.
+The string name should be the name of the pragma (and must be lowercase).
+The function it maps to will "handle" that pragma, and should look like this:
+
+`def pragma_fn(parser, argument)`
+
+`parser` is the internal Perky `Parser` object.  `argument` is the
+rest of the relevant line, with leading & trailing whitespace stripped.
+
+There's currently one predefined pragma handler, a function called
+`perky.pragma_include()`.  This adds "include statement" functionality
+to Perky.  If you call this:
+
+`perky.load(filename, pragmas={'include': perky.pragma_include})`
+
+then Perky will interpret lines inside `filename` starting with `=include`
+as include statements, using the rest of the line as the name of a file.
+For more information, see `pragma_include()` below.
+
+The rules of pragmas:
+* To invoke a pragma, use `=` as the first non-whitespace character
+  on a line.
+* pragmas must always be lowercase.
+* pragmas are always global.  You can call pragmas
+  inside a nested dict or list but, if they change data,
+  they'll always operate on the outermost dict.
+* You can't invoke a pragma inside a triple-quoted string.
+* It's best to have all your pragmas at the top of your Perky text.
+
 ### API
 
-`perky.loads(s) -> d`
+`perky.loads(s, *, pragmas=None) -> d`
 
 Parses a string containing Perky-file-format settings.
 Returns a dict.
 
-`perky.load(filename, encoding="utf-8") -> d`
+`perky.load(filename, *, pragmas=None, encoding="utf-8") -> d`
 
 Parses a file containing Perky-file-format settings.
 Returns a dict.
@@ -84,31 +134,40 @@ that are not dicts, lists, or strings will be converted
 to strings using str.
 Returns a string.
 
-`perky.dump(filename, d, encoding="utf-8")`
+`perky.dump(filename, d, *, encoding="utf-8")`
 
 Converts a dictionary to a Perky-file-format string
 using `perky.dump`, then writes it to *filename*.
 
-`perky.include(d, include=True, includes=False, recursive=True, encoding="utf-8") -> d`
+`perky.include(d, recursive=True, encoding="utf-8") -> d`
 
-Processes `include` directives inside a dictionary.  The first
+Processes an `include` directive inside a dictionary.  The first
 argument `d` must be a dictionary.
 
-If `include` is True, and `d['include']` is set, the value of
-`d['include']` will be used as the first filename, see below.
-
-If `includes` is True, and `d['includes']` is set, the value of
-`d['includes']` will be used as an iterable of filenames, see below.
-
-For every filename in the list of filenames, `perky.include()` will
-`perky.load()` a dictionary from that filename, using the encoding
-passed in.  If `recursive` is set, then `perky.include()` will
+If `d["include"]` is set, that value is used as a filename.
+`perky.include()` will execute `perky.load(filename)` using the encoding
+passed in, then merge dictionary into `d`--however existing values in `d`
+take precedence.  If `recursive` is set, then `perky.include()` will
 recursively process includes in those dictionaries.
 
-After processing all filenames, `perky.include()` will merge the dictionaries
-together.  The dictionaries are merged in this order: first "include",
-then "includes", then the original `d` argument.
 Returns this final merged dictionary.
+
+`perky.includes(d, recursive=True, encoding="utf-8") -> d`
+
+Similar to `perky.include`, except the name of the key
+is `d["includes"]`, and it must contain a *list* of filenames
+rather than simply one filename.  `perky.includes()` will then
+read in all those filenames, merge them together, then merge
+that with the `d` passed in.
+
+`pragma_include(...)`
+
+A pre-written pragma handler for you.  If you use this function
+to handle `"include"` pragmas, then the pragma `=include foo` will
+`perky.load()` the file `foo` into the current (top-level) dictionary
+being loaded.  `pragma_include()` will pass in the current pragma
+handlers into `perky.load()`, allowing for (for example) recursive
+incldues.
 
 `perky.map(d, fn) -> o`
 

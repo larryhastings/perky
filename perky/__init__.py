@@ -1,23 +1,15 @@
 #!/usr/bin/env python3
 #
 # Part of the "perky" Python library
-# Copyright 2018 by Larry Hastings
+# Copyright 2018-2020 by Larry Hastings
 
 
 # TODO:
-#
-# ALLOW EMPTY KEYS
-#       foo =
-# is currently an error, it should be an empty string
 #
 # turn if 0 module-level tests into real tests, dude
 #
 # explicit fns for xform schema vs function
 #  * need betterer names
-#
-# Per-line callback function (for #include)
-#   * and, naturally, an example callback function
-#     for you to use (aka "#include")
 #
 # More library utility functions to manage
 # perky dict/lists:
@@ -44,6 +36,36 @@
 # and unquoted string values can contain all those AND
 #   =
 
+# DONE
+#
+# split include() into include() and includes()
+#
+# add pragmas parameter to load / loads
+#     {"prefix": fn(d, suffix)}
+# prefix can be None in which case it's called for every comment line, first
+#   fn is called with current dict and the rest of the line after whitespace
+#     e.g.
+#     load(filename, {"include": includify })
+#   if filename contains the line
+#     #include foo.txt
+#   we'll call
+#     includify(d, "foo.txt")
+#
+#   * idea for pragma: allow it to be a dict entry?
+#     #include = filename
+#     #include = [
+#          ...
+#          ]
+#     I think this is maybe kinda icky.
+#
+# ALLOW EMPTY KEYS
+#       foo =
+# is currently an error, it should be an empty string
+#
+# Per-line callback function (for #include)
+#   * and, naturally, an example callback function
+#     for you to use (aka "#include")
+#
 
 """
 A simple, Pythonic file format.  Same interface as the
@@ -80,8 +102,11 @@ def assert_or_raise(*exprs):
 
 class Parser:
 
-    def __init__(self, s):
+    def __init__(self, s, *, pragmas=None, encoding='utf-8'):
         self.lp = LineParser(s)
+        self.pragmas = pragmas or {}
+        self.encoding = encoding
+        self.root_dict = {}
 
 
     def assert_or_raise(self, *exprs):
@@ -90,6 +115,18 @@ class Parser:
         if not all(exprs):
             raise PerkyFormatError(f"Line {self.lp.line_number}: {s}")
 
+    def _parse_pragma(self):
+        line = self.lp.line.strip()
+        assert line[0] == '='
+        line = line[1:].strip()
+
+        fields = line.split(None, 1)
+        pragma = fields[0].lower()
+        arguments = fields[1] if len(fields) > 1 else None
+        fn = self.pragmas.get(pragma)
+        if not fn:
+            raise PerkyFormatError(f"Line {self.lp.line_number}: Unknown pragma {pragma}")
+        fn(self, arguments)
 
     def _parse_value(self, t):
         tok, value = t
@@ -102,11 +139,25 @@ class Parser:
         return value
 
 
-    def _read_dict(self):
-        d = {}
+    def _read_dict(self, starting_dict=None):
+        if starting_dict is None:
+            d = {}
+        else:
+            d = starting_dict
+
         for tokens in self.lp:
-            if len(tokens) == 1 and tokens[0][0] is RIGHT_CURLY_BRACE:
-                break
+            token, argument = tokens[0]
+            if token is EQUALS:
+                self._parse_pragma()
+                continue
+            if len(tokens) == 1:
+                token, argument = tokens[0]
+                if token is RIGHT_CURLY_BRACE:
+                    break
+                if token is COMMENT:
+                    continue
+            tokens = [t for t in tokens if t[0] is not WHITESPACE]
+
             self.assert_or_raise(
                 (2 <= len(tokens) <= 3) and tokens[0][0] is STRING and tokens[1][0] is EQUALS,
                 "Invalid token sequence: in dict, expected STRING = or STRING == VALUE or }, line = " + repr(self.lp.line))
@@ -121,13 +172,19 @@ class Parser:
     def _read_list(self):
         l = []
         for tokens in self.lp:
+            token, argument = tokens[0]
+            if token is EQUALS:
+                self._parse_pragma()
+                continue
             self.assert_or_raise(
                 len(tokens) == 1,
                 "Invalid token sequence: in list, expected one token, line = " + repr(self.lp.line))
-            token = tokens[0]
-            if token[0] is RIGHT_SQUARE_BRACKET:
+            token, argument = tokens[0]
+            if token is RIGHT_SQUARE_BRACKET:
                 break
-            value = self._parse_value(token)
+            if token is COMMENT:
+                continue
+            value = self._parse_value(tokens[0])
             l.append(value)
         return l
 
@@ -157,6 +214,9 @@ class Parser:
         # heavy lifting in textwrap.dedent()
         s = re.sub(r'(?m)^' + prefix, '', s)
         return s
+
+    def parse(self):
+        return self._read_dict(self.root_dict)
 
 
 class Serializer:
@@ -239,9 +299,9 @@ class Serializer:
         return self.serialize_quoted_string(value)
 
 @export
-def loads(s):
-    p = Parser(s)
-    d = p._read_dict()
+def loads(s, *, pragmas=None, encoding='utf-8'):
+    p = Parser(s, pragmas=pragmas, encoding=encoding)
+    d = p.parse()
     return d
 
 @export
@@ -252,12 +312,12 @@ def dumps(d):
 
 
 @export
-def load(filename, encoding="utf-8"):
+def load(filename, *, pragmas=None, encoding="utf-8"):
     with open(filename, "rt", encoding=encoding) as f:
-        return loads(f.read())
+        return loads(f.read(), pragmas=pragmas, encoding=encoding)
 
 @export
-def dump(filename, d, encoding="utf-8"):
+def dump(filename, d, *, encoding="utf-8"):
     with open(filename, "wt", encoding=encoding) as f:
         f.write(serialize(d))
 
@@ -349,25 +409,12 @@ def transform(o, schema, default=None):
     return _transform(o, schema, default)
 
 
-@export
-def include(o, *, include=True, includes=False, recursive=True, encoding="utf-8"):
+def _include(o, filenames, key, recursive, encoding):
     assert_or_raise(
         isinstance(o, dict),
         "object must be a dict")
-    filenames = []
     dicts = []
-    remove_keys = []
-    if include and "include" in o:
-        include = o["include"]
-        if include:
-            filenames.append(include)
-        remove_keys.append("include")
-    if includes and "includes" in o:
-        includes = o.get("includes")
-        if includes:
-            filenames.extend(include)
-        remove_keys.append("includes")
-    for filename in filenames:
+    for filename in filenames():
         d = load(filename, encoding=encoding)
         if recursive:
             d = include(d, include=include, includes=includes, recursive=True, encoding=encoding)
@@ -376,9 +423,32 @@ def include(o, *, include=True, includes=False, recursive=True, encoding="utf-8"
     final = dicts[0]
     for d in dicts[1:]:
         final.update(d)
-    for key in remove_keys:
-        del final[key]
+    del final[key]
     return final
+
+@export
+def include(o, *, recursive=True, encoding="utf-8"):
+    def filenames(o):
+        include = o.get("include")
+        if not include:
+            return []
+        return [include]
+    return _include(o, filenames, "include", recursive=recursive, encoding=encoding)
+
+
+@export
+def includes(o, *, recursive=True, encoding="utf-8"):
+    def filenames(o):
+        includes = o.get("includes")
+        if not include:
+            return []
+        return includes
+    return _include(o, filenames, "includes", recursive=recursive, encoding=encoding)
+
+@export
+def pragma_include(parser, filename):
+    sub_d = load(filename, pragmas=parser.pragmas, encoding=parser.encoding)
+    parser.root_dict.update(sub_d)
 
 
 constmap = {
