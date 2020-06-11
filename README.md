@@ -41,7 +41,7 @@ quoting.
             ]
             ]
         }
-    # lines starting with hash are ignored
+    # lines starting with hash are comments which are ignored
 
     # blank lines are ignored
 
