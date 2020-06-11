@@ -26,6 +26,21 @@ quoting.
         b
         c
         ]
+    nested dict = {
+        name = dict
+        level 2 = {
+            level 3 = {
+                and = so on
+                }
+            }
+        lists = [
+            nest
+            [
+                too
+                you see?
+            ]
+            ]
+        }
     # lines starting with hash are ignored
 
     # blank lines are ignored
