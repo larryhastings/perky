@@ -414,16 +414,20 @@ def _include(o, filenames, key, recursive, encoding):
         isinstance(o, dict),
         "object must be a dict")
     dicts = []
-    for filename in filenames():
+    for filename in filenames(o):
         d = load(filename, encoding=encoding)
         if recursive:
-            d = include(d, include=include, includes=includes, recursive=True, encoding=encoding)
+            d = _include(d, filenames, key, recursive=True, encoding=encoding)
         dicts.append(d)
     dicts.append(o)
     final = dicts[0]
     for d in dicts[1:]:
         final.update(d)
-    del final[key]
+    try:
+        del final[key]
+    except KeyError:
+        # When traversing a set of files recursively, the leaves won't have includes set
+        pass
     return final
 
 @export
@@ -440,7 +444,7 @@ def include(o, *, recursive=True, encoding="utf-8"):
 def includes(o, *, recursive=True, encoding="utf-8"):
     def filenames(o):
         includes = o.get("includes")
-        if not include:
+        if not includes:
             return []
         return includes
     return _include(o, filenames, "includes", recursive=recursive, encoding=encoding)
