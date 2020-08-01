@@ -1,0 +1,17 @@
+a = 1
+b = {
+    ba = 1
+    bb = 2
+    nested_dict = {
+        x = 1
+        y = 2
+        z = [
+            1
+            2
+        ]
+    }
+    =include included.pky
+    bd = 4
+}
+c = 3
+d = 4

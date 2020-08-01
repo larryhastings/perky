@@ -1,0 +1,13 @@
+bc = 3
+nested_dict = {
+    x = 3
+    z = [
+        3
+        4
+    ]
+}
+nested_list = [
+    a
+    b
+    c
+]

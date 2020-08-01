@@ -38,8 +38,6 @@
 
 # DONE
 #
-# split include() into include() and includes()
-#
 # add pragmas parameter to load / loads
 #     {"prefix": fn(d, suffix)}
 # prefix can be None in which case it's called for every comment line, first
@@ -102,12 +100,12 @@ def assert_or_raise(*exprs):
 
 class Parser:
 
-    def __init__(self, s, *, pragmas=None, encoding='utf-8'):
+    def __init__(self, s, *, pragmas=None, encoding='utf-8', root=None):
         self.lp = LineParser(s)
         self.pragmas = pragmas or {}
         self.encoding = encoding
-        self.root_dict = {}
-
+        self.root = root if root is not None else {}
+        self.breadcrumbs = []
 
     def assert_or_raise(self, *exprs):
         exprs = list(exprs)
@@ -140,10 +138,10 @@ class Parser:
 
 
     def _read_dict(self, starting_dict=None):
-        if starting_dict is None:
-            d = {}
-        else:
-            d = starting_dict
+        d = starting_dict if starting_dict is not None else {}
+        self.breadcrumbs.append(d)
+
+        keys_seen = set()
 
         for tokens in self.lp:
             token, argument = tokens[0]
@@ -161,16 +159,23 @@ class Parser:
             self.assert_or_raise(
                 (2 <= len(tokens) <= 3) and tokens[0][0] is STRING and tokens[1][0] is EQUALS,
                 "Invalid token sequence: in dict, expected STRING = or STRING == VALUE or }, line = " + repr(self.lp.line))
-            name = tokens[0][1].strip()
+            key = tokens[0][1].strip()
+            self.assert_or_raise(
+                key not in keys_seen,
+                f"Invalid Perky dict: repeated key {key!r}")
+            keys_seen.add(key)
             if len(tokens) == 3:
                 value = self._parse_value(tokens[2])
             else:
                 value = ""
-            d[name] = value
+            d[key] = value
+
+        self.breadcrumbs.pop()
         return d
 
-    def _read_list(self):
-        l = []
+    def _read_list(self, starting_list=None):
+        l = starting_list if starting_list is not None else []
+        self.breadcrumbs.append(l)
         for tokens in self.lp:
             token, argument = tokens[0]
             if token is EQUALS:
@@ -186,6 +191,7 @@ class Parser:
                 continue
             value = self._parse_value(tokens[0])
             l.append(value)
+        self.breadcrumbs.pop()
         return l
 
     def _read_textblock(self, marker):
@@ -216,7 +222,9 @@ class Parser:
         return s
 
     def parse(self):
-        return self._read_dict(self.root_dict)
+        if isinstance(self.root, list):
+            return self._read_list(self.root)
+        return self._read_dict(self.root)
 
 
 class Serializer:
@@ -299,8 +307,8 @@ class Serializer:
         return self.serialize_quoted_string(value)
 
 @export
-def loads(s, *, pragmas=None, encoding='utf-8'):
-    p = Parser(s, pragmas=pragmas, encoding=encoding)
+def loads(s, *, pragmas=None, encoding='utf-8', root=None):
+    p = Parser(s, pragmas=pragmas, encoding=encoding, root=root)
     d = p.parse()
     return d
 
@@ -312,9 +320,9 @@ def dumps(d):
 
 
 @export
-def load(filename, *, pragmas=None, encoding="utf-8"):
+def load(filename, *, pragmas=None, encoding="utf-8", root=None):
     with open(filename, "rt", encoding=encoding) as f:
-        return loads(f.read(), pragmas=pragmas, encoding=encoding)
+        return loads(f.read(), pragmas=pragmas, encoding=encoding, root=root)
 
 @export
 def dump(filename, d, *, encoding="utf-8"):
@@ -409,47 +417,18 @@ def transform(o, schema, default=None):
     return _transform(o, schema, default)
 
 
-def _include(o, filenames, key, recursive, encoding):
-    assert_or_raise(
-        isinstance(o, dict),
-        "object must be a dict")
-    dicts = []
-    for filename in filenames():
-        d = load(filename, encoding=encoding)
-        if recursive:
-            d = include(d, include=include, includes=includes, recursive=True, encoding=encoding)
-        dicts.append(d)
-    dicts.append(o)
-    final = dicts[0]
-    for d in dicts[1:]:
-        final.update(d)
-    del final[key]
-    return final
-
-@export
-def include(o, *, recursive=True, encoding="utf-8"):
-    def filenames(o):
-        include = o.get("include")
-        if not include:
-            return []
-        return [include]
-    return _include(o, filenames, "include", recursive=recursive, encoding=encoding)
-
-
-@export
-def includes(o, *, recursive=True, encoding="utf-8"):
-    def filenames(o):
-        includes = o.get("includes")
-        if not include:
-            return []
-        return includes
-    return _include(o, filenames, "includes", recursive=recursive, encoding=encoding)
-
 @export
 def pragma_include(parser, filename):
-    sub_d = load(filename, pragmas=parser.pragmas, encoding=parser.encoding)
-    parser.root_dict.update(sub_d)
-
+    leaf = parser.breadcrumbs[-1]
+    leaf_is_list = isinstance(parser.breadcrumbs[-1], list)
+    subroot = [] if leaf_is_list else {}
+    load(filename, pragmas=parser.pragmas, encoding=parser.encoding, root=subroot)
+    merged = merge_dicts_and_lists(leaf, subroot)
+    leaf.clear()
+    if isinstance(leaf, list):
+        leaf.extend(merged)
+    else:
+        leaf.update(merged)
 
 constmap = {
     'None': None,

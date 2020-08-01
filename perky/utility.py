@@ -3,6 +3,8 @@
 # Part of the "perky" Python library
 # Copyright 2018-2020 by Larry Hastings
 
+import os
+
 
 class RecursiveChainMap(dict):
 
@@ -89,6 +91,62 @@ def merge_dicts(*dicts):
     rcm = RecursiveChainMap(*dicts)
     return _merge_dicts(rcm)
 
+
+def _mdal_dict(roots):
+    for root in roots:
+        assert isinstance(root, dict)
+    if len(roots) == 1:
+        return dict(roots[0])
+    d = {}
+    roots = list(roots)
+    while roots:
+        root0 = roots.pop(0)
+        for key, value in root0.items():
+            if isinstance(value, (dict, list)):
+                if key in d:
+                    # only merge once!
+                    continue
+                subroots = [value]
+                t = type(value)
+                for root in roots:
+                    if key not in root:
+                        continue
+                    value = root[key]
+                    assert isinstance(value, t)
+                    subroots.append(value)
+                if isinstance(value, list):
+                    value = _mdal_list(subroots)
+                else:
+                    value = _mdal_dict(subroots)
+            d[key] = value
+    return d
+
+def _mdal_list(roots):
+    l = []
+    for root in roots:
+        assert isinstance(root, list)
+        l.extend(root)
+    return l
+
+def merge_dicts_and_lists(*roots):
+    assert roots
+    root0 = roots[0]
+    assert isinstance(root0, (dict, list)), f"expected t to be dict or list, was {type(t)}, repr is {t!r}"
+    if isinstance(root0, list):
+        return _mdal_list(roots)
+    return _mdal_dict(roots)
+
+
+class pushd:
+    def __init__(self, path):
+        self.path = path
+
+    def __enter__(self):
+        self.old_path = os.getcwd()
+        os.chdir(self.path)
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        os.chdir(self.old_path)
 
 if __name__ == "__main__":
     dict1 = {'a': 1, 'sub': {1: 2, 3:4, 5:6}}

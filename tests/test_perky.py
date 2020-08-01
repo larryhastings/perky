@@ -127,6 +127,15 @@ a = """
         with self.assertRaises(perky.PerkyFormatError):
             perky.loads(TEST_INPUT_TEXT_TRIPLE_Q_ERROR)
 
+    def test_parse_trip_repeated_key_error(self):
+        # perky doesn't like it if you redefine the same key in a dict
+        # twice in the same file.
+        # note that perky explicitly doesn't complain if you
+        # redefine a key in a different (as in, =include'd) file.
+        # test_perky_include_nested tests redefining in different files.
+        with self.assertRaises(perky.PerkyFormatError):
+            perky.loads("a=3\na=5")
+
 # TODO: check if there are any other formats that would cause a failure
     def test_read_file(self):
         test_input = perky.load("test_input.txt", encoding="utf-8")
@@ -156,6 +165,38 @@ a = """
         schema = {'a': int, 'b': float, 'c': [perky.nullable(int)], 'd': {'e': str, 'g': perky.const}}
         with self.assertRaises(perky.PerkyFormatError):
             perky.transform(o, schema)
+
+    def test_perky_include_list(self):
+        with perky.pushd("include_list"):
+            root = perky.load("main.pky", root=[], pragmas={'include':perky.pragma_include})
+        self.assertEqual(root, list("abcd"))
+
+    def test_perky_include_dict(self):
+        with perky.pushd("include_dict"):
+            root = perky.load("main.pky", pragmas={'include':perky.pragma_include})
+        self.assertEqual(root, dict(zip("abcd", "1234")))
+
+    def test_perky_include_nested(self):
+        with perky.pushd("include_nested"):
+            root = perky.load("main.pky", pragmas={'include':perky.pragma_include})
+        self.assertEqual(root,
+            {
+                'a': '1',
+                'b': {
+                    'ba': '1',
+                    'bb': '2',
+                    'bc': '3',
+                    'bd': '4',
+                    'nested_dict': {
+                        'x': '3',
+                        'y': '2',
+                        'z': ['1', '2', '3', '4']
+                        },
+                    'nested_list': ['a', 'b', 'c'],
+                    },
+                'c': '3',
+                'd': '4'}
+            )
 
     # def test_default_transform(self):
     #     o = {'a': '3', 'b': '5.0', 'c': '7j', 'sub': {'1': '2', '2': '4.0', '3': '6j'}, 'list': ['10', '20', '30']}
