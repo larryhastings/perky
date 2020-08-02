@@ -129,6 +129,33 @@ def _mdal_list(roots):
     return l
 
 def merge_dicts_and_lists(*roots):
+    """
+    Takes a sequence of homogenous roots
+    (either dicts or lists, with the same
+    shape of dicts and lists inside).
+    Merges all the roots together into a
+    single data structure and returns the merged
+    result.
+
+    For dicts:
+        Non-dict-or-list values are overwritten;
+        values from later roots have higher priority.
+        Child dicts and lists are recursively merged.
+    For lists:
+        All lists are concatenated, with later roots
+        being appended after earlier roots.
+
+    Values in lists aren't examined, just copied
+    over.  This means if a root contains a list
+    or a dict inside of a list, the merged result
+    will have a reference to that existing dict
+    or list.  This could be messy if the shared
+    dict or dict is modified.  However, this function
+    is only used internally (by pragma_include) and
+    this behavior is fine.  (In fact, it's preferable,
+    because it's faster, and the old "roots" are always
+    thrown away immediately anyway.)
+    """
     assert roots
     root0 = roots[0]
     assert isinstance(root0, (dict, list)), f"expected t to be dict or list, was {type(t)}, repr is {t!r}"
