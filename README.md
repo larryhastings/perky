@@ -192,7 +192,7 @@ another file.
 * `perky.pragma_include()` is not the pragma handler itself;
 it returns a function (a closure) which remembers the `include_path`
 you pass in.  This allows you to use it for multiple pragmas that
-include from different paths, e.g.
+include from different paths, e.g.:
 
     include_dir = appdirs.user_data_dir(myapp_name)
     config_dir = appdirs.user_config_dir(myapp_name)
