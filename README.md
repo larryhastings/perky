@@ -152,7 +152,7 @@ Returns a string.
 Converts a dictionary to a Perky-file-format string
 using `perky.dump`, then writes it to *filename*.
 
-`pragma_include(include_path=())`
+`perky.pragma_include(include_path=())`
 
 This function generates a pragma handler that adds "include"
 functionlity.  "Including" means lexically inserting one Perky
@@ -189,7 +189,7 @@ this allows for recursive includes.
 to re-define existing keys if they were previously defined in
 another file.
 
-* `pragma_include()` is not the pragma handler itself;
+* `perky.pragma_include()` is not the pragma handler itself;
 it returns a function (a closure) which remembers the `include_path`
 you pass in.  This allows you to use it for multiple pragmas that
 include from different paths, e.g.
