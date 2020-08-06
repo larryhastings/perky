@@ -420,13 +420,11 @@ def transform(o, schema, default=None):
 
 
 @export
-def pragma_include(include_path=()):
+def pragma_include(include_path=(".",)):
     assert isinstance(include_path, (list, tuple))
     assert not isinstance(include_path, str)
     assert all(isinstance(s, str) for s in include_path)
-    include_path = list(include_path)
-    if "." not in include_path:
-        include_path.append(".")
+    include_path = tuple(include_path)
     def pragma_include(parser, filename):
         leaf = parser.breadcrumbs[-1]
         leaf_is_list = isinstance(parser.breadcrumbs[-1], list)
