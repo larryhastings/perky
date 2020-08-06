@@ -168,17 +168,17 @@ a = """
 
     def test_perky_include_list(self):
         with perky.pushd("include_list"):
-            root = perky.load("main.pky", root=[], pragmas={'include':perky.pragma_include})
+            root = perky.load("main.pky", root=[], pragmas={'include':perky.pragma_include()})
         self.assertEqual(root, list("abcd"))
 
     def test_perky_include_dict(self):
         with perky.pushd("include_dict"):
-            root = perky.load("main.pky", pragmas={'include':perky.pragma_include})
+            root = perky.load("main.pky", pragmas={'include':perky.pragma_include()})
         self.assertEqual(root, dict(zip("abcd", "1234")))
 
     def test_perky_include_nested(self):
         with perky.pushd("include_nested"):
-            root = perky.load("main.pky", pragmas={'include':perky.pragma_include})
+            root = perky.load("main.pky", pragmas={'include':perky.pragma_include()})
         self.assertEqual(root,
             {
                 'a': '1',
@@ -197,6 +197,12 @@ a = """
                 'c': '3',
                 'd': '4'}
             )
+
+    def test_perky_include_path(self):
+        with perky.pushd("include_path"):
+            root = perky.load("dir1/main.pky", pragmas={'include':perky.pragma_include( ['dir1', 'dir2'] )})
+        self.assertEqual(root, dict(zip("abc", "345")))
+
 
     # def test_default_transform(self):
     #     o = {'a': '3', 'b': '5.0', 'c': '7j', 'sub': {'1': '2', '2': '4.0', '3': '6j'}, 'list': ['10', '20', '30']}

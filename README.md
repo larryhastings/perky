@@ -98,7 +98,7 @@ There's currently one predefined pragma handler, a function called
 `perky.pragma_include()`.  This adds "include statement" functionality
 to Perky.  If you call this:
 
-`perky.load(filename, pragmas={'include': perky.pragma_include})`
+`perky.load(filename, pragmas={'include': perky.pragma_include()})`
 
 then Perky will interpret lines inside `filename` starting with `=include`
 as include statements, using the rest of the line as the name of a file.
@@ -152,20 +152,54 @@ Returns a string.
 Converts a dictionary to a Perky-file-format string
 using `perky.dump`, then writes it to *filename*.
 
-`pragma_include(...)`
+`pragma_include(include_path=())`
 
-A pre-written pragma handler for you.  If you use this function
-to handle `"include"` pragmas, then the pragma `=include foo` will
-`perky.load()` the file `foo` into the current (top-level) dictionary
-being loaded.  `pragma_include()` will pass in the current pragma
-handlers into `perky.load()`, allowing for (for example) recursive
-includes.  `pragma_include()` is context-sensitive; the included
+This function generates a pragma handler that adds "include"
+functionlity.  "Including" means lexically inserting one Perky
+file inside another, contextually at the spot where the pragma
+exists.
+
+For example:
+
+    d = perky.loads("a=3\n" "=include data.pky\n" "c=5\n",
+        pragmas={"include": perky.pragma_include()},
+        )
+
+If *data.pky* contained the following:
+
+    b=4
+
+then `d` would be set to the dictionary:
+
+    {'a': '3', 'b': '4', 'c': '5'}
+
+Notes:
+
+* The pragma handler is context-sensitive; the included
 file will be included as if it was copied-and-pasted replacing
-the pragma line.  (Which means if the pragma is invoked inside
-a list context, the included file must *start* in a list context.)
-When including inside a dict, you're explicitly permitted to
-re-define existing keys if they were previously defined in another
-file.
+the pragma line.  Among other things, this means that if the pragma
+is invoked inside a list context, the included file must *start*
+in a list context.
+
+* When loading the file, the pragma handler will pass in the
+current pragma handlers into `perky.load()`.  Among other things,
+this allows for recursive includes.
+
+* When including inside a dict context, you're explicitly permitted
+to re-define existing keys if they were previously defined in
+another file.
+
+* `pragma_include()` is not the pragma handler itself;
+it returns a function (a closure) which remembers the `include_path`
+you pass in.  This allows you to use it for multiple pragmas that
+include from different paths, e.g.
+
+    include_dir = appdirs.user_data_dir(myapp_name)
+    config_dir = appdirs.user_config_dir(myapp_name)
+    pragmas = {
+        'include': perky.pragma_include((include_dir,)),
+        'config': perky.pragma_include((config_dir,)),
+    }
 
 `perky.map(d, fn) -> o`
 

@@ -73,6 +73,8 @@ A simple, Pythonic file format.  Same interface as the
 __version__ = "0.1.3"
 
 import ast
+import os.path
+from os.path import isfile, join, normpath
 import re
 import shlex
 import sys
@@ -418,17 +420,31 @@ def transform(o, schema, default=None):
 
 
 @export
-def pragma_include(parser, filename):
-    leaf = parser.breadcrumbs[-1]
-    leaf_is_list = isinstance(parser.breadcrumbs[-1], list)
-    subroot = [] if leaf_is_list else {}
-    load(filename, pragmas=parser.pragmas, encoding=parser.encoding, root=subroot)
-    merged = merge_dicts_and_lists(leaf, subroot)
-    leaf.clear()
-    if isinstance(leaf, list):
-        leaf.extend(merged)
-    else:
-        leaf.update(merged)
+def pragma_include(include_path=()):
+    assert isinstance(include_path, (list, tuple))
+    assert not isinstance(include_path, str)
+    assert all(isinstance(s, str) for s in include_path)
+    include_path = list(include_path)
+    if "." not in include_path:
+        include_path.append(".")
+    def pragma_include(parser, filename):
+        leaf = parser.breadcrumbs[-1]
+        leaf_is_list = isinstance(parser.breadcrumbs[-1], list)
+        subroot = [] if leaf_is_list else {}
+        for directory in include_path:
+            path = normpath(join(directory, filename))
+            if isfile(path):
+                break
+        else:
+            raise FileNotFoundError(filename)
+        load(path, pragmas=parser.pragmas, encoding=parser.encoding, root=subroot)
+        merged = merge_dicts_and_lists(leaf, subroot)
+        leaf.clear()
+        if isinstance(leaf, list):
+            leaf.extend(merged)
+        else:
+            leaf.update(merged)
+    return pragma_include
 
 constmap = {
     'None': None,
