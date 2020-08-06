@@ -173,6 +173,18 @@ then `d` would be set to the dictionary:
 
     {'a': '3', 'b': '4', 'c': '5'}
 
+`perky.pragma_include()` is not the pragma handler itself;
+it returns a function (a closure) which remembers the `include_path`
+you pass in.  This allows you to use it for multiple pragmas that
+include from different paths, e.g.:
+
+    include_dir = appdirs.user_data_dir(myapp_name)
+    config_dir = appdirs.user_config_dir(myapp_name)
+    pragmas = {
+        'include': perky.pragma_include((include_dir,)),
+        'config': perky.pragma_include((config_dir,)),
+    }
+
 Notes:
 
 * The pragma handler is context-sensitive; the included
@@ -188,18 +200,6 @@ this allows for recursive includes.
 * When including inside a dict context, you're explicitly permitted
 to re-define existing keys if they were previously defined in
 another file.
-
-* `perky.pragma_include()` is not the pragma handler itself;
-it returns a function (a closure) which remembers the `include_path`
-you pass in.  This allows you to use it for multiple pragmas that
-include from different paths, e.g.:
-
-    include_dir = appdirs.user_data_dir(myapp_name)
-    config_dir = appdirs.user_config_dir(myapp_name)
-    pragmas = {
-        'include': perky.pragma_include((include_dir,)),
-        'config': perky.pragma_include((config_dir,)),
-    }
 
 `perky.map(d, fn) -> o`
 
