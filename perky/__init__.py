@@ -6,6 +6,13 @@
 
 # TODO:
 #
+# pragma parser:
+#  * handle quoted argument, e.g. =include " file starting with space.h"
+#  * reserve all other perky syntax features, complain if they are used
+#      * """ and '''
+#      * {
+#      * [
+#
 # turn if 0 module-level tests into real tests, dude
 #
 # explicit fns for xform schema vs function
