@@ -148,6 +148,9 @@ There are only a few errors possible when parsing a Perky text:
 * Defining the same value twice in the same dict.  This is flagged
   as an error, because it could easily be a mistake, and in Python
   we don't want to let errors pass silently.
+* Using an undefined pragma.
+* Using one of Perky's special tokens as a pragma argument, like
+  `{`, `[`, `'''`, or `"""`.
 
 ### API
 
