@@ -26,7 +26,22 @@ quoting.
         b
         c
         ]
-    # lines starting with hash are ignored
+    nested dict = {
+        name = dict
+        level 2 = {
+            level 3 = {
+                and = so on
+                }
+            }
+        lists = [
+            nest
+            [
+                too
+                you see?
+            ]
+            ]
+        }
+    # lines starting with hash are comments which are ignored
 
     # blank lines are ignored
 
