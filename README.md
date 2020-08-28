@@ -27,23 +27,24 @@ quoting.
         c
         ]
     nested dict = {
-        name = dict
-        level 2 = {
-            level 3 = {
-                and = so on
+        name = value
+        nesting level 2 = {
+            nesting level 3 = {
+                and = so on!
                 }
             }
-        lists = [
-            nest
-            [
-                too
+        list inside the dict = [
+            value in the list
+                [
+                and this is in a nested list!
+                this is another value.
                 you see?
-            ]
+                ]
             ]
         }
-    # lines starting with hash are comments which are ignored
+    # lines starting with hash are comments and are ignored!
 
-    # blank lines are ignored
+    # blank lines are ignored too!
 
     " quoted name " = " quoted value "
 
