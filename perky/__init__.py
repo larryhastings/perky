@@ -6,13 +6,6 @@
 
 # TODO:
 #
-# pragma parser:
-#  * handle quoted argument, e.g. =include " file starting with space.h"
-#  * reserve all other perky syntax features, complain if they are used
-#      * """ and '''
-#      * {
-#      * [
-#
 # turn if 0 module-level tests into real tests, dude
 #
 # explicit fns for xform schema vs function
@@ -44,6 +37,13 @@
 #   =
 
 # DONE
+#
+# pragma parser:
+#  * handle quoted argument, e.g. =include " file starting with space.h"
+#  * reserve all other perky syntax features, complain if they are used
+#      * """ and '''
+#      * {
+#      * [
 #
 # add pragmas parameter to load / loads
 #     {"prefix": fn(d, suffix)}
@@ -129,11 +129,19 @@ class Parser:
 
         fields = line.split(None, 1)
         pragma = fields[0].lower()
-        arguments = fields[1] if len(fields) > 1 else None
+        if len(fields) == 1:
+            argument = None
+        else:
+            argument = fields[1]
+            tokens = list(tokenize(argument))
+            if len(tokens) != 1 or tokens[0][0] != STRING:
+                raise PerkyFormatError(f"Line {self.lp.line_number}: Invalid pragma argument {argument}")
+            argument = tokens[0][1]
+
         fn = self.pragmas.get(pragma)
         if not fn:
             raise PerkyFormatError(f"Line {self.lp.line_number}: Unknown pragma {pragma}")
-        fn(self, arguments)
+        fn(self, argument)
 
     def _parse_value(self, t):
         tok, value = t

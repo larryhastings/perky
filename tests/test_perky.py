@@ -203,6 +203,11 @@ a = """
             root = perky.load("dir1/main.pky", pragmas={'include':perky.pragma_include( ['dir1', 'dir2'] )})
         self.assertEqual(root, dict(zip("abc", "345")))
 
+    def test_perky_invalid_pragma(self):
+        with self.assertRaises(perky.PerkyFormatError):
+            root = perky.loads("a=b\n=include '''\nc=d\n", pragmas={'include':perky.pragma_include()})
+
+
 
     # def test_default_transform(self):
     #     o = {'a': '3', 'b': '5.0', 'c': '7j', 'sub': {'1': '2', '2': '4.0', '3': '6j'}, 'list': ['10', '20', '30']}
