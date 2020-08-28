@@ -102,15 +102,18 @@ But you can define your own pragma handlers when you call `perky.load()`
 or `perky.loads()`, using a named parameter called `pragmas`.
 If you pass in a value for `pragmas`, it must be a mapping
 of strings to functions.
-The string name should be the name of the pragma (and must be lowercase).
-The function it maps to will "handle" that pragma, and should look like this:
+The string name should be the name of the pragma and must be lowercase.
+The function it maps to will "handle" that pragma, and should match this
+prototype:
 
 `def pragma_fn(parser, argument)`
 
 `parser` is the internal Perky `Parser` object.  `argument` is the
 rest of the relevant line, with leading & trailing whitespace stripped.
+(If the rest of the line was empty, `argument` will be `None`).
+The return value of the pragma function is ignored.
 
-There's currently one predefined pragma handler, a function called
+There's currently only one predefined pragma handler, a function called
 `perky.pragma_include()`.  This adds "include statement" functionality
 to Perky.  If you call this:
 
@@ -123,12 +126,15 @@ For more information, see `pragma_include()` below.
 The rules of pragmas:
 * To invoke a pragma, use `=` as the first non-whitespace character
   on a line.
-* Pragmas must always be lowercase.
+* The names of pragmas must always be lowercase.
 * You can't invoke a pragma inside a triple-quoted string.
 * Pragmas can be "context-sensitive": they can be aware of where
   they are run inside a file, and e.g. modify the current dict
   or list.  The pragma function can see the entire current nested
   list of dicts and lists being parsed (via `parser.breadcrumbs`).
+* The rest of the line after the name of the pragma is the
+  pragma argument value, if any.  This is always a string.  It can
+  be a quoted string.
 
 ### Parsing Errors
 
