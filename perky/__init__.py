@@ -77,7 +77,7 @@ A simple, Pythonic file format.  Same interface as the
 "pickle" module (load, loads, dump, dumps).
 """
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 import ast
 import os.path
@@ -270,7 +270,33 @@ class Serializer:
 
     @staticmethod
     def quoted_string(s):
-        return shlex.quote(s)
+        single = "'"
+        double = '"'
+        must_quote = (
+            (s.strip() != s)
+            or (s.startswith((single, double)))
+            or any(c in s for c in c_to_token) # c_to_token is in tokenize
+            or ("\n" in s)
+            or ("\t" in s)
+            )
+        if not must_quote:
+            return s
+
+        # use the quote that will result in fewer escaped quote marks
+        # (prefer double quotes)
+        if len(s.split(double)) < len(s.split(double)):
+            quote = double
+        else:
+            quote = single
+
+        for bad, good in (
+            ("\\", "\\\\"),
+            ("\t", "\\t"),
+            ("\n", "\\n"),
+            (quote, "\\" + quote),
+            ):
+            s = s.replace(bad, good)
+        return quote + s + quote
 
     def serialize(self, d):
         for name, value in d.items():

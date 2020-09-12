@@ -106,8 +106,8 @@ def tokenize(s, skip_whitespace=True):
 
     def parse_unquoted_string():
         """
-        Parse an unquoted string.  In Perky, this is a string
-        without quote marks, but *with* spaces.
+        Parse an unquoted string.
+        Note that it *is* permitted to have spaces.
 
         Returns the unquoted string parsed.
         If there were no characters to be read, returns an
@@ -138,14 +138,16 @@ def tokenize(s, skip_whitespace=True):
         buffer = [quote]
         backslash = False
         for c in i:
-            if backslash:
-                backslash = False
-            elif c == '\\':
-                backslash = True
+            if c == '\\':
+                backslash = not backslash
                 continue
-            buffer.append(c)
-            if c == quote:
+            if (c == quote) and (not backslash):
+                buffer.append(quote)
                 break
+            if backslash:
+                buffer.append('\\')
+            buffer.append(c)
+            backslash = False
 
         try:
             return ast.literal_eval("".join(buffer))
@@ -223,7 +225,7 @@ class LineParser:
 
     def __init__(self, s, skip_whitespace=True):
         self._lines = s.split("\n")
-        self.lines = enumerate(self._lines)
+        self.lines = enumerate(self._lines, 1)
         self.skip_whitespace = skip_whitespace
 
     def __repr__(self):
