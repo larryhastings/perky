@@ -103,9 +103,15 @@ class TestParseMethods(unittest.TestCase):
         with self.assertRaises(AttributeError):
             perky.loads(None)
 
-    def test_parse_bad_input(self):
+    def test_parse_wrong_type_input(self):
         with self.assertRaises(AttributeError):
             perky.loads(3)
+
+    def test_parse_unterminated_quoted_string(self):
+        with self.assertRaises(SyntaxError):
+            perky.loads("""
+'quoted' = 'unterminated quoted string
+""")
 
     def test_parse_triple_quote(self):
         d = perky.loads('''
