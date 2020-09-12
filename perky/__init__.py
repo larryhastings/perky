@@ -3,7 +3,6 @@
 # Part of the "perky" Python library
 # Copyright 2018-2020 by Larry Hastings
 
-
 # TODO:
 #
 # turn if 0 module-level tests into real tests, dude
@@ -76,6 +75,15 @@
 A simple, Pythonic file format.  Same interface as the
 "pickle" module (load, loads, dump, dumps).
 """
+
+# leaving this in is sufficient to meet the binary distribution
+# doc requirement
+copyright = """
+perky
+Copyright 2018-2020 by Larry Hastings
+All rights reserved.
+"""
+
 
 __version__ = "0.2.2"
 
