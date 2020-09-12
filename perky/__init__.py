@@ -77,7 +77,7 @@ A simple, Pythonic file format.  Same interface as the
 "pickle" module (load, loads, dump, dumps).
 """
 
-__version__ = "0.2"
+__version__ = "0.2.1"
 
 import ast
 import os.path
@@ -343,9 +343,10 @@ def load(filename, *, pragmas=None, encoding="utf-8", root=None):
 
 @export
 def dump(filename, d, *, encoding="utf-8"):
+    s = Serializer()
+    s.serialize(d)
     with open(filename, "wt", encoding=encoding) as f:
-        f.write(serialize(d))
-
+        f.write(s.dumps() + "\n")
 
 
 
