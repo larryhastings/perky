@@ -85,7 +85,7 @@ All rights reserved.
 """
 
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 
 import ast
 import os.path
@@ -292,7 +292,7 @@ class Serializer:
 
         # use the quote that will result in fewer escaped quote marks
         # (prefer double quotes)
-        if len(s.split(double)) < len(s.split(double)):
+        if len(s.split(double)) <= len(s.split(single)):
             quote = double
         else:
             quote = single
