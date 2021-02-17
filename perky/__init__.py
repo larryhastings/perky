@@ -5,6 +5,15 @@
 
 # TODO:
 #
+# allow
+#     value = []
+#     value = [ ]
+#     value = []
+#     value = { }
+# inside dicts (and similarly without "value =" inside lists)
+#
+# what if ''' or """ appears inside the triple-quoted string?
+#
 # turn if 0 module-level tests into real tests, dude
 #
 # explicit fns for xform schema vs function
