@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
 #
 # Part of the "perky" Python library
-# Copyright 2018-2020 by Larry Hastings
+# Copyright 2018-2021 by Larry Hastings
 
 # TODO:
 #
-# allow
-#     value = []
-#     value = [ ]
-#     value = []
-#     value = { }
 # inside dicts (and similarly without "value =" inside lists)
 #
 # what if ''' or """ appears inside the triple-quoted string?
@@ -45,6 +40,12 @@
 #   =
 
 # DONE
+#
+# allow
+#     value = []
+#     value = [ ]
+#     value = {}
+#     value = { }
 #
 # pragma parser:
 #  * handle quoted argument, e.g. =include " file starting with space.h"
@@ -89,12 +90,12 @@ A simple, Pythonic file format.  Same interface as the
 # doc requirement
 copyright = """
 perky
-Copyright 2018-2020 by Larry Hastings
+Copyright 2018-2021 by Larry Hastings
 All rights reserved.
 """
 
 
-__version__ = "0.2.3"
+__version__ = "0.5"
 
 import ast
 import os.path
@@ -115,13 +116,31 @@ def export(fn):
 
 @export
 class PerkyFormatError(Exception):
-    pass
+    def __init__(self, message, tokens=None, line=None):
+        self.message = message
+        self.tokens = tokens
+        self.line = line
 
-def assert_or_raise(*exprs):
-    exprs = list(exprs)
-    s = exprs.pop()
-    if not all(exprs):
-        raise PerkyFormatError(s)
+    def __repr__(self):
+        strings = [f"<{self.__class__.__name__} {self.message!r}"]
+        if self.tokens is not None:
+            strings.append(f" tokens={self.tokens!r}")
+        if self.line is not None:
+            strings.append(f" line={self.line!r}")
+        strings.append(">")
+        return "".join(strings)
+
+    def __str__(self):
+        strings = [f"{self.__class__.__name__}: {self.message!r}"]
+        if self.tokens is not None:
+            strings.append(f"tokens={self.tokens!r}")
+        if self.line is not None:
+            strings.append(f"line={self.line!r}")
+        return "\n".join(strings)
+
+def assert_or_raise(expr, message, tokens, line):
+    if not expr:
+        raise PerkyFormatError(message, tokens, line)
 
 
 class Parser:
@@ -133,14 +152,12 @@ class Parser:
         self.root = root if root is not None else {}
         self.breadcrumbs = []
 
-    def assert_or_raise(self, *exprs):
-        exprs = list(exprs)
-        s = exprs.pop()
-        if not all(exprs):
-            raise PerkyFormatError(f"Line {self.lp.line_number}: {s}")
+    def assert_or_raise(self, expr, message, tokens, line):
+        if not expr:
+            raise PerkyFormatError(message, tokens, line)
 
-    def _parse_pragma(self):
-        line = self.lp.line.strip()
+    def _parse_pragma(self, line):
+        line = line.strip()
         assert line[0] == '='
         line = line[1:].strip()
 
@@ -152,12 +169,12 @@ class Parser:
             argument = fields[1]
             tokens = list(tokenize(argument))
             if len(tokens) != 1 or tokens[0][0] != STRING:
-                raise PerkyFormatError(f"Line {self.lp.line_number}: Invalid pragma argument {argument}")
+                raise PerkyFormatError(f"Line {self.lp.line_number}: Invalid pragma argument {argument}", tokens, line)
             argument = tokens[0][1]
 
         fn = self.pragmas.get(pragma)
         if not fn:
-            raise PerkyFormatError(f"Line {self.lp.line_number}: Unknown pragma {pragma}")
+            raise PerkyFormatError(f"Line {self.lp.line_number}: Unknown pragma {pragma}", None, line)
         fn(self, argument)
 
     def _parse_value(self, t):
@@ -168,6 +185,10 @@ class Parser:
             return self._read_list()
         if (tok is TRIPLE_SINGLE_QUOTE) or (tok is TRIPLE_DOUBLE_QUOTE):
             return self._read_textblock(value)
+        if tok is EMPTY_CURLY_BRACES:
+            return {}
+        if tok is EMPTY_SQUARE_BRACKETS:
+            return []
         return value
 
 
@@ -177,7 +198,7 @@ class Parser:
 
         keys_seen = set()
 
-        for tokens in self.lp:
+        for tokens, line in self.lp:
             token, argument = tokens[0]
             if token is EQUALS:
                 self._parse_pragma()
@@ -192,11 +213,13 @@ class Parser:
 
             self.assert_or_raise(
                 (2 <= len(tokens) <= 3) and tokens[0][0] is STRING and tokens[1][0] is EQUALS,
-                "Invalid token sequence: in dict, expected STRING = or STRING == VALUE or }, line = " + repr(self.lp.line))
+                "Invalid token sequence: in dict, expected STRING = or STRING == VALUE or }",
+                tokens, line)
             key = tokens[0][1].strip()
             self.assert_or_raise(
                 key not in keys_seen,
-                f"Invalid Perky dict: repeated key {key!r}")
+                f"Invalid Perky dict: repeated key {key!r}",
+                tokens, line)
             keys_seen.add(key)
             if len(tokens) == 3:
                 value = self._parse_value(tokens[2])
@@ -210,14 +233,15 @@ class Parser:
     def _read_list(self, starting_list=None):
         l = starting_list if starting_list is not None else []
         self.breadcrumbs.append(l)
-        for tokens in self.lp:
+        for tokens, line in self.lp:
             token, argument = tokens[0]
             if token is EQUALS:
                 self._parse_pragma()
                 continue
             self.assert_or_raise(
                 len(tokens) == 1,
-                "Invalid token sequence: in list, expected one token, line = " + repr(self.lp.line))
+                "Invalid token sequence: in list, expected one token",
+                tokens, line)
             token, argument = tokens[0]
             if token is RIGHT_SQUARE_BRACKET:
                 break
@@ -247,7 +271,8 @@ class Parser:
                 self.assert_or_raise(
                     # line must either be empty or start with our prefix
                     (not line) or line.startswith(prefix),
-                    "Format error: malformed line triple-quoted block, line is " + repr(line))
+                    "Format error: malformed line triple-quoted block",
+                    None, line)
 
         s = "\n".join(line for line in l)
         # this one line does all the
@@ -292,7 +317,7 @@ class Serializer:
         must_quote = (
             (s.strip() != s)
             or (s.startswith((single, double)))
-            or any(c in s for c in c_to_token) # c_to_token is in tokenize
+            or any(c in s for c in non_quote_operators) # non_quote_operators is in tokenize
             or ("\n" in s)
             or ("\t" in s)
             )
@@ -445,7 +470,8 @@ def _transform(o, schema, default):
     if isinstance(schema, dict):
         assert_or_raise(
             isinstance(o, dict),
-            f"schema mismatch: schema is a dict, o should be a dict but is {o!r}")
+            f"schema mismatch: schema is a dict, o should be a dict but is {o!r}",
+            None, None)
         result = {}
         for name, value in o.items():
             handler = schema.get(name)
@@ -457,24 +483,27 @@ def _transform(o, schema, default):
         return result
     if isinstance(schema, list):
         assert_or_raise(
-            isinstance(o, list),
-            len(schema) == 1,
-            f"schema mismatch: schema is a list, o should be a list but is {o!r}")
+            isinstance(o, list) and (len(schema) == 1),
+            f"schema mismatch: schema is a list, o should be a list but is {o!r}",
+            None, None)
         handler = schema[0]
         return [_transform(value, handler, default) for value in o]
     assert_or_raise(
         callable(schema),
-        f"schema mismatch: schema values must be dict, list, or callable, got {schema!r}")
+        f"schema mismatch: schema values must be dict, list, or callable, got {schema!r}",
+        None, None)
     return schema(o)
 
 @export
 def transform(o, schema, default=None):
     assert_or_raise(
         isinstance(o, dict),
-        "schema must be a dict")
+        "schema must be a dict",
+        None, None)
     assert_or_raise(
         (not default) or callable(default),
-        "default must be either None or a callable")
+        "default must be either None or a callable",
+        None, None)
     return _transform(o, schema, default)
 
 
@@ -551,7 +580,8 @@ class _AnnotateSchema:
 
         assert_or_raise(
             callable(value),
-            "Malformed schema error: " + repr(name) + " = " + repr(value) + ", value is not dict, list, or callable!")
+            "Malformed schema error: " + repr(name) + " = " + repr(value) + ", value is not dict, list, or callable!",
+            None, None)
         required = getattr(value, "_perky_required", None)
         if required:
             s = "".join(self.head) + name + "".join(reversed(self.tail))

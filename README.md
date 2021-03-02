@@ -2,7 +2,7 @@
 
 ## A friendly, easy, Pythonic text file format
 
-##### Copyright 2018-2020 by Larry Hastings
+##### Copyright 2018-2021 by Larry Hastings
 
 
 ### Overview
@@ -60,7 +60,17 @@ quoting.
         <-- aka here
         """
 
-    =pragma argument
+    one-line empty list = []
+    one-line empty dict = {}
+    one-line empty list with whitespace = [ ]
+    one-line empty dict with whitespace = { }
+    multi-line empty list = [
+        ]
+    multi-line empty dict = {
+        }
+
+    =pragma
+    =pragma with argument
 
 #### Explicit transformation is better than implicit
 

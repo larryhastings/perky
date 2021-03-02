@@ -128,6 +128,19 @@ a = """
 ''')
         self.assertEqual(d['a'], "\nthis is flush left\nnote the          ^^\nintentional trailing whitespace!\n\n  don't remove it, even though I\n  know you want to.")
 
+    def test_empty_dicts_and_lists(self):
+        d = perky.loads('''
+a = []
+b = {}
+c = [ ]
+d = { }
+
+''')
+        self.assertEqual(d['a'], [])
+        self.assertEqual(d['b'], {})
+        self.assertEqual(d['c'], [])
+        self.assertEqual(d['d'], {})
+
 # TODO: add code changes to perky.py to raise an assertion error.
     def test_parse_trip_q_error(self):
         with self.assertRaises(perky.PerkyFormatError):
