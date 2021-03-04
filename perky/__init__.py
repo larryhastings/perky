@@ -5,6 +5,8 @@
 
 # TODO:
 #
+# YOU NEED TESTS THAT TEST dump()
+#
 # inside dicts (and similarly without "value =" inside lists)
 #
 # what if ''' or """ appears inside the triple-quoted string?
@@ -113,7 +115,7 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 
-__version__ = "0.5.2"
+__version__ = "0.5.3"
 
 import ast
 import os.path
@@ -335,7 +337,7 @@ class Serializer:
         must_quote = (
             (s.strip() != s)
             or (s.startswith((single, double)))
-            or any(c in s for c in non_quote_operators) # non_quote_operators is in tokenize
+            or any(c in s for c in non_quoting_operators) # non_quoting_operators is in tokenize
             or ("\n" in s)
             or ("\t" in s)
             )
