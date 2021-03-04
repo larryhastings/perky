@@ -47,7 +47,7 @@ SINGLE_QUOTE          = token("'", 'single quote')
 DOUBLE_QUOTE          = token('"', 'double quote')
 TRIPLE_SINGLE_QUOTE   = token("'''", 'triple single quote')
 TRIPLE_DOUBLE_QUOTE   = token('"""', 'triple double quote')
-EMPTY_CURLY_BRACES    = token('{}', 'emtpy curly braces')
+EMPTY_CURLY_BRACES    = token('{}', 'empty curly braces')
 EMPTY_SQUARE_BRACKETS = token('[]', 'empty square brackets')
 
 single_quote_tokens = set((SINGLE_QUOTE, DOUBLE_QUOTE))
@@ -62,7 +62,7 @@ left_bracket_to_empty_bracket_token = {
     '{': (EMPTY_CURLY_BRACES, '{}'),
 }
 
-non_quote_operators = set(c for c in c_to_tokens if c not in ('"', "'"))
+non_quoting_operators = set(c for c in c_to_tokens if c not in ('"', "'"))
 
 # sort tokens in c_to_tokens by length, longest first
 for value in c_to_tokens.values():
@@ -78,52 +78,73 @@ for value in c_to_tokens.values():
 
 class pushback_str_iterator:
     def __init__(self, s):
-        self.characters = list(reversed(s))
+        # self.iterators is a stack, growing to the right.
+        # each entry is an iterator that yields individual
+        # characters.
+        # remove iterators from the end (-1) and yield
+        # until exhausted.
+        self.iterators = [iter(s)]
 
     def __repr__(self):
-        contents = "".join(reversed(self.characters))
-        return f'<pushback {contents!r}>'
+        return f'<pushback {len(self.iterators)!r} iterators>'
 
     def push(self, s):
-        for c in s:
-            self.characters.append(c)
+        self.iterators.append(iter(s))
 
     def __next__(self):
-        if not self.characters:
+        # the general case here is that the first
+        # iterator we try works.  so, instead of
+        # a "while True" loop that we nearly never
+        # loop on, use recursion to handle the
+        # edge case where the top iterator
+        # is exhausted.
+        if not self.iterators:
             raise StopIteration()
-        return self.characters.pop()
+        try:
+            i = self.iterators[-1]
+            return next(i)
+        except StopIteration:
+            self.iterators.pop()
+            return self.__next__()
 
     def __iter__(self):
         return self
 
     def __bool__(self):
-        return bool(self.characters)
+        # can't just return bool(self.iterators),
+        # as all the iterators in that list might
+        # be exhausted.
+        try:
+            c = next(self)
+            self.push(c)
+            return True
+        except StopIteration:
+            return False
 
     def drain(self):
         """
         Return all remaining characters as a string.
         """
-        s = "".join(reversed(self.characters))
-        self.characters.clear()
+        strings = ["".join(i) for i in reversed(self.iterators)]
+        s = "".join(strings)
+        self.iterators.clear()
         return s
 
 
-def tokenize(s, skip_whitespace=True):
+def tokenize(s, suppress_whitespace=True):
     """
-    Iterator that yields tokens from a line.
+    Tokenizer for individual lines of a Perky file.
+    Hand-written, designed specifically for Perky syntax.
 
-    Handles two types of lines:
-        * lines in a dict
-            name = value
-        * lines in a list
-            value
+    This function is a generator; it yields tokens from
+    the line until the line is exhausted.
 
-    Each token is a tuple of length two: the first element
-    is one of the predefined tokens at the top of this file,
-    and the second is the "value" of that token
-    (e.g if the token is STRING, value is the value of
-    that string).
+    If suppres_whitespace is true (the default),
+    this generator will not yield WHITESPACE tokens.
+    (Trailing whitespace is generally discarded anyway.)
     """
+
+    # assert "\n" not in s
 
     i = pushback_str_iterator(s)
 
@@ -132,9 +153,12 @@ def tokenize(s, skip_whitespace=True):
         Parse an unquoted string.
         Note that it *is* permitted to have spaces.
 
-        Returns the unquoted string parsed.
+        Returns the unquoted string.
         If there were no characters to be read, returns an
         empty string.
+        Note that trailing whitespace is stripped.
+        (If you want trailing whitespace preserved,
+        use a quoted string.)
 
         Stops the unquoted string at EOL, or the first
         character used in Perky syntax (=, {, [, etc).
@@ -144,7 +168,7 @@ def tokenize(s, skip_whitespace=True):
         """
         buffer = []
         for c in i:
-            if c in non_quote_operators:
+            if c in non_quoting_operators:
                 i.push(c)
                 break
             buffer.append(c)
@@ -185,7 +209,7 @@ def tokenize(s, skip_whitespace=True):
                     i.push(c)
                     break
                 whitespace.append(c)
-            if not skip_whitespace:
+            if not suppress_whitespace:
                 yield WHITESPACE, "".join(whitespace)
             continue
 
@@ -222,13 +246,14 @@ def tokenize(s, skip_whitespace=True):
                 continue
 
             if token in triple_quote_tokens:
-                # triple quote must be last thing on line (except possibly-ignored trailing whitespace)
+                # triple quote MUST be last thing on line (except possibly-ignored trailing whitespace)
                 trailing = i.drain()
                 if trailing and not trailing.isspace():
                     raise RuntimeError("tokenizer: found triple-quote followed by non-whitespace string " + repr(trailing))
                 yield t
-                if trailing:
-                    yield WHITESPACE, trailing
+                # don't yield trailing whitespace here--we never do anywhere else!
+                # if trailing and not suppress_whitespace:
+                #     yield WHITESPACE, trailing
                 return
 
             if token in left_bracket_tokens:
@@ -258,10 +283,10 @@ def tokenize(s, skip_whitespace=True):
 
 class LineParser:
 
-    def __init__(self, s, skip_whitespace=True):
+    def __init__(self, s, suppress_whitespace=True):
         self._lines = s.split("\n")
         self.lines = enumerate(self._lines, 1)
-        self.skip_whitespace = skip_whitespace
+        self.suppress_whitespace = suppress_whitespace
 
     def __repr__(self):
         return f"<LineParser {self._lines}>"
@@ -280,7 +305,7 @@ class LineParser:
     def tokens(self):
         while self.lines:
             line = self.line = self.next_line()
-            l = list(tokenize(line, skip_whitespace=self.skip_whitespace))
+            l = list(tokenize(line, suppress_whitespace=self.suppress_whitespace))
             if l:
                 return l, line
             if l is None:
@@ -295,9 +320,11 @@ class LineParser:
             return t
 
 if __name__ == "__main__":
-    want_print = False
+    want_print = "-v" in sys.argv
     # want_print = True
-    def test(s, *tokens_and_values):
+    test_number = 1
+    def _test(s, tokens_and_values, suppress_whitespace):
+        global test_number
         def fail(message):
             print(message)
             print("s:", repr(s))
@@ -318,22 +345,42 @@ if __name__ == "__main__":
                 values.append(t)
                 expect_token = True
         if want_print:
-            print("test input:\n\t", s, "\nshould match:\n\t", " ".join(x if x in token_to_name else repr(x) for x in tokens_and_values))
-        for tok, s in tokenize(s, skip_whitespace=False):
-            if want_print:
-                print("  >>", tok, repr(s))
+            if suppress_whitespace is None:
+                suffix = ""
+            else:
+                modifier = "suppressing" if suppress_whitespace else "keeping"
+                suffix = f", {modifier} whitespace tokens"
+            print(f"test #{test_number}{suffix}:\n  input:\n\t", repr(s), "\n  should match:\n\t", " ".join(x if x in token_to_name else repr(x) for x in tokens_and_values))
+            test_number += 1
+            print()
+        for tok, s in tokenize(s, suppress_whitespace=suppress_whitespace):
             t = tokens.pop(0)
             if want_print:
-                print("    ", repr(t))
-            if tok != t:
-                fail("token doesn't match, expected " + str(token_to_name[t]) + " got " + str(token_to_name.get(tok)))
+                print("  [want]", t, end="")
             if tok in tokens_with_values:
                 v = values.pop(0)
-                if v != s:
-                    fail("token value doesn't match, expected " + repr(v) + " got " + repr(s))
+                print(f" {s!r}")
+            else:
+                print()
+                v = None
+            if want_print:
+                print("  [ got]", tok, repr(s))
+            if tok != t:
+                fail("token doesn't match, expected " + str(token_to_name[t]) + " got " + str(token_to_name.get(tok)))
+            if (v is not None) and (v != s):
+                fail("token value doesn't match, expected " + repr(v) + " got " + repr(s))
 
         if want_print:
             print()
+
+    def test(s, *tokens_and_values):
+        without_whitespace = tuple(x for x in tokens_and_values if x != WHITESPACE)
+        tests_differ = without_whitespace != tokens_and_values
+        if tests_differ:
+            _test(s, tokens_and_values, suppress_whitespace=False)
+            _test(s, without_whitespace, suppress_whitespace=True)
+        else:
+            _test(s, without_whitespace, suppress_whitespace=None) # dumb flag!
 
     test(r"hey party people ", STRING, "hey party people")
     test(r"  hey party people ", WHITESPACE, STRING, "hey party people")

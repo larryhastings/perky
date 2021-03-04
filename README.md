@@ -8,13 +8,49 @@
 ### Overview
 
 Perky is a new, simple "rcfile" text file format for Python programs.
+It solves the same problem as "INI" files, "TOML" files, and "JSON"
+files, but with its own opinion about how to best solve the problem.
 
-The following are Perky features:
+Perky's goals:
+
+* Minimal, human-friendly syntax.  Perky files are easy to write by hand.
+* Explicit minimal data type support.  Rather than guess at the types
+  of your data, Perky lets you handle the final transformation.
+* Lightweight, simple, and fast.  Perky's implementation is small
+  and straightforward.  Ignoring comments and test code, it's about
+  1k lines of Python.  Fewer lines means fewer bugs!  (Hopefully!)
+* Flexible and extensible.  Perky permits extending the semantics of
+  Perky files through a "pragma" mechanism.
 
 #### Perky syntax
 
 Perky configuration files look something like JSON without the
-quoting.
+quoting.  It supports only a surprisingly small set of value
+types:
+
+* strings, including quoted strings and
+  "triple-quoted strings" (multi-line strings),
+* "lists" (arrays),
+* and "dicts" (associative arrays).
+
+Perky is line-oriented; individual values go on a single
+line.  Container objects use one line per internal value.
+
+You may nest lists and dicts as deeply as memory permits.
+
+Unlike Python itself, leading whitespace is ignored.  You
+are free to use leading whitespace to show structure but
+this is optional.
+
+Blank lines and comment lines (lines starting with `#`)
+are ignored.
+
+Perky also supports "pragmas", which are lines that start
+with an equals sign.  By default Perky doesn't define any
+pragmas--it's an extension mechanism for your use.
+
+Here's a sample Perky configuration file exercising all
+the things you can do in Perky:
 
     example name = value
     example dict = {
@@ -54,7 +90,7 @@ quoting.
             is preserved
 
         the string is automatically outdented
-        to the leftmost character of the ending
+        to the leftmost character of the *ending*
         triple-quote
 
         <-- aka here
@@ -89,8 +125,10 @@ transform it with the schema `{'myvalue': int}`.
 
 Note that Perky doesn't care how or if you transform your
 data.  You can use it as-is, or transform it, or transform
-it with multiple passes, or use an external transformation technology like
-[Marshmallow.](https://marshmallow.readthedocs.io/en/3.0/)
+it with multiple passes.  You don't even need to use Perky's
+simple transformation mechanisms--you can ignore them completely
+and use an external transformation library like
+[Marshmallow.](https://marshmallow.readthedocs.io/)
 
 ### Pragmas
 
@@ -100,11 +138,11 @@ inside a bit of Perky text.
 
 Here's an example pragma directive:
 
-`=foo bar bat`
+`=command argument here`
 
-The first word after the equals sign is the name of the pragma, in this case `"foo"`.
+The first word after the equals sign is the name of the pragma, in this case `"command"`.
 Everything after the name of the pragma is an argument, with all leading
-and trailing whitespace removed, in this case `"bar bat"`.
+and trailing whitespace removed, in this case `"argument here"`.
 
 By default, Perky doesn't have any pragma handlers.  And invoking a pragma
 when Perky doesn't have a handler for it is a runtime error.
@@ -153,6 +191,7 @@ There are only a few errors possible when parsing a Perky text:
 * Obviously, syntax errors, for example:
     * A line in a dict that doesn't have an unquoted equals sign
     * A line in a list that looks like a dict line (`name = value`).
+      (If you want a value like that inside a list, simply put it in quotes.)
     * A triple-quoted string where any line is outdented past
       the ending triple quotes line.
 * Defining the same value twice in the same dict.  This is flagged
@@ -160,7 +199,7 @@ There are only a few errors possible when parsing a Perky text:
   we don't want to let errors pass silently.
 * Using an undefined pragma.
 * Using one of Perky's special tokens as a pragma argument, like
-  `{`, `[`, `'''`, or `"""`.
+  `{`, `[`, `'''`, `"""`, `[]`, or `{}`.
 
 ### API
 
@@ -182,7 +221,7 @@ that are not dicts, lists, or strings will be converted
 to strings using str.
 Returns a string.
 
-`perky.dump(filename, d, *, encoding="utf-8")`
+`perky.dump(filename, d, *, pragmas=None, encoding="utf-8")`
 
 Converts a dictionary to a Perky-file-format string
 using `perky.dump`, then writes it to *filename*.

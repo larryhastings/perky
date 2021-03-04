@@ -113,7 +113,7 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 
-__version__ = "0.5.1"
+__version__ = "0.5.2"
 
 import ast
 import os.path
@@ -219,7 +219,7 @@ class Parser:
         for tokens, line in self.lp:
             token, argument = tokens[0]
             if token is EQUALS:
-                self._parse_pragma()
+                self._parse_pragma(line)
                 continue
             if len(tokens) == 1:
                 token, argument = tokens[0]
@@ -254,7 +254,7 @@ class Parser:
         for tokens, line in self.lp:
             token, argument = tokens[0]
             if token is EQUALS:
-                self._parse_pragma()
+                self._parse_pragma(line)
                 continue
             self.assert_or_raise(
                 len(tokens) == 1,
@@ -283,7 +283,7 @@ class Parser:
         if prefix:
             # detect this error:
             #    a = '''
-            #       outdenting is fun
+            #       outdenting sure is fun!
             #          '''
             for line in l:
                 self.assert_or_raise(
