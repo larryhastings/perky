@@ -5,7 +5,15 @@
 
 # TODO:
 #
-# YOU NEED TESTS THAT TEST dump()
+# should Perky happily parse this?
+#
+#     Apple ][ = {
+#         bits = 8
+#     }
+#
+# because right now it doesn't.
+
+# YOU NEED more TESTS THAT TEST dump()
 #
 # inside dicts (and similarly without "value =" inside lists)
 #
@@ -115,7 +123,7 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 
-__version__ = "0.5.3"
+__version__ = "0.5.5"
 
 import ast
 import os.path
@@ -364,11 +372,7 @@ class Serializer:
         for name, value in d.items():
             if not isinstance(name, str):
                 raise RuntimeError("keys in perky dicts must always be strings!")
-            if name == name.strip() and "".join(name.split()).isalnum():
-                self.line = self.quoted_string(name)
-            else:
-                self.line = name
-            self.line += " = "
+            self.line = self.quoted_string(name) + " = "
             self.serialize_value(value)
 
     def serialize_dict(self, value):

@@ -226,6 +226,20 @@ d = { }
         with self.assertRaises(perky.PerkyFormatError):
             root = perky.loads("a=b\n=include '''\nc=d\n", pragmas={'include':perky.pragma_include()})
 
+    def test_perky_roundtrip(self):
+        for i in range(1, 300):
+            c = chr(i)
+            if c.isspace():
+                continue
+            hex_digits = hex(i).partition("x")[2].rjust(4, "0")
+            s = f"U+{hex_digits} {c}"
+
+            d1 = {s:s}
+            s1 = perky.dumps(d1)
+            d2 = perky.loads(s1)
+            s2 = perky.dumps(d2)
+            self.assertEqual(d1, d2)
+            self.assertEqual(s1, s2)
 
 
     # def test_default_transform(self):
