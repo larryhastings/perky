@@ -99,7 +99,7 @@ class pushback_str_iterator:
         # edge case where the top iterator
         # is exhausted.
         if not self.iterators:
-            raise StopIteration()
+            raise StopIteration
         try:
             i = self.iterators[-1]
             return next(i)
@@ -114,6 +114,8 @@ class pushback_str_iterator:
         # can't just return bool(self.iterators),
         # as all the iterators in that list might
         # be exhausted.
+        if not self.iterators:
+            return False
         try:
             c = next(self)
             self.push(c)
