@@ -127,8 +127,18 @@ class pushback_str_iterator:
         return self
 
     def __bool__(self):
-        value = self.stack or self.i
-        return value
+        if self.stack:
+            return True
+        if not self.i:
+            return False
+
+        try:
+            c = next(self.i)
+            self.push_c(c)
+            return True
+        except StopIteration:
+            self.i = None
+            return False
 
     def drain(self):
         """

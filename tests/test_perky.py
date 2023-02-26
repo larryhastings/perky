@@ -260,6 +260,25 @@ d = { }
         i.push(['Y', 'Z'])
         self.assertEqual(i.drain(), "YZnozzleXabcde")
 
+    def test_pushback_str_iterator_bool_regression(self):
+        for push_in_the_middle in (False, True):
+            i = perky.pushback_str_iterator("abc")
+            assert i
+
+            assert next(i) == 'a'
+            assert i
+
+            assert next(i) == 'b'
+            assert i
+
+            if push_in_the_middle:
+                i.push('X')
+                assert next(i) == 'X'
+                assert i
+
+            assert next(i) == 'c'
+            assert not i
+
 
 if __name__ == '__main__':
     unittest.main()
