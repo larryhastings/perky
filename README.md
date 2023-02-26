@@ -2,7 +2,7 @@
 
 ## A friendly, easy, Pythonic text file format
 
-##### Copyright 2018-2021 by Larry Hastings
+##### Copyright 2018-2023 by Larry Hastings
 
 
 ### Overview

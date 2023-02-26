@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # Part of the "perky" Python library
-# Copyright 2018-2021 by Larry Hastings
+# Copyright 2018-2023 by Larry Hastings
 
 # TODO:
 #
@@ -100,7 +100,7 @@ A simple, Pythonic file format.  Same interface as the
 # doc requirement
 copyright = """
 perky
-Copyright 2018-2021 by Larry Hastings
+Copyright 2018-2023 by Larry Hastings
 All rights reserved.
 
 Permission is hereby granted, free of charge, to any person obtaining a
@@ -123,7 +123,7 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 
-__version__ = "0.6.1"
+__version__ = "0.6.2"
 
 import ast
 import os.path

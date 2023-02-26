@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # Part of the "perky" Python library
-# Copyright 2018-2021 by Larry Hastings
+# Copyright 2018-2023 by Larry Hastings
 
 import os
 
@@ -198,7 +198,7 @@ if __name__ == "__main__":
     assert rcm['b'] == 2
     merged_sub = {a: a+1 for a in range(1, 7)}
     sub = {n: v for n, v in rcm['sub'].items()}
-    assert sub == merged_sub, f"{sub=} != {merged_sub}"
+    assert sub == merged_sub, f"{sub} != {merged_sub}"
 
     d = merge_dicts(dict1, dict2)
     d2 = dict(dict1)
