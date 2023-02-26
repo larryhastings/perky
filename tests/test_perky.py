@@ -241,56 +241,24 @@ d = { }
             self.assertEqual(d1, d2)
             self.assertEqual(s1, s2)
 
+    def test_pushback_str_iterator(self):
+        i = perky.pushback_str_iterator("abcde")
+        strings = []
+        strings.append(next(i)) # a
+        strings.append(next(i)) # b
+        i.push_c("X")
+        strings.append(next(i)) # X
+        strings.append(next(i)) # c
+        i.push("YZ")
+        for c in i:
+            strings.append(c) # Y Z d e
+        self.assertEqual("".join(strings), "abXcYZde")
 
-    # def test_default_transform(self):
-    #     o = {'a': '3', 'b': '5.0', 'c': '7j', 'sub': {'1': '2', '2': '4.0', '3': '6j'}, 'list': ['10', '20', '30']}
-    #     result = perky.transform(o)
-    #     self.assertEqual(result['a'], 3)
-    #     self.assertEqual(result['b'], 5.0)
-    #     self.assertEqual(result['c'], 7j)
-    #     self.assertEqual(result['sub']['1'], 2)
-    #     self.assertEqual(result['sub']['2'], 4.0)
-    #     self.assertEqual(result['sub']['3'], 6j)
-    #     self.assertEqual(result['list'], [10, 20, 30])
-
-# TODO: parts to test
-# perky.loads
-# perky.dumps
-# perky.requires
-#
-# perky.transform(list, list)
-# perky.transform('a', str)
-
-# if 1:
-#     o = {'a': '3', 'b': '5.0', 'c': ['1', '2', 'None', '3'], 'd': { 'e': 'f', 'g': 'True'}}
-#     schema = {'a': int, 'b': float, 'c': [nullable(int)], 'd': { 'e': str, 'g': const }}
-#
-#     result = transform(o, schema)
-#     import pprint
-#     pprint.pprint(result)
-#
-#     print("REQUIRED 1")
-#     r = Required()
-#     schema = {
-#         'a': r(int),
-#         'b': r(float),
-#         'c': [nullable(int)],
-#         'd': {
-#             'e': r(str),
-#             'g': const
-#             }
-#         }
-#     r.annotate(schema)
-#     print("schema", schema)
-#     result = transform(o, schema)
-#     print(result)
-#     r.verify()
-#
-#     print("REQUIRED 2")
-#     r.annotate(schema)
-#     o2 = {'a': '44'}
-#     result = transform(o2, schema)
-#     r.verify()
+        i = perky.pushback_str_iterator("abcde")
+        i.push_c("X")
+        i.push("nozzle")
+        i.push(['Y', 'Z'])
+        self.assertEqual(i.drain(), "YZnozzleXabcde")
 
 
 if __name__ == '__main__':

@@ -77,59 +77,73 @@ for value in c_to_tokens.values():
         assert len(value[1][1]) == 1, f"unexpected value {value}"
 
 class pushback_str_iterator:
+    # look! a go-faster stripe!
+    __slots__ = ('i', 'stack')
+
     def __init__(self, s):
-        # self.iterators is a stack, growing to the right.
-        # each entry is an iterator that yields individual
-        # characters.
-        # remove iterators from the end (-1) and yield
-        # until exhausted.
-        self.iterators = [iter(s)]
+        # iterate over s
+        self.i = iter(s)
+        # but maintain a stack for pushbacks
+        self.stack = []
 
     def __repr__(self):
-        return f'<pushback {len(self.iterators)!r} iterators>'
+        return f'<pushback i={self.i} stack={list(self.stack)}>'
+
+    def push_c(self, c):
+        """
+        Optimized version of push that assumes c is a single character.
+        push() will accept a string (or list) of any length.
+        However, we frequently know we're pushing only a single character,
+        allowing us to do this much cheaper operation instead.
+
+        pushback_str_iterator is an internal data structure,
+        and not supported for public use, so it's safe to go a little
+        bare-metal like this.
+        """
+        # assert isinstance(c, str) and (len(c) == 1), f"expected str of len 1, got {c=} ({type(c)})"
+        self.stack.append(c)
 
     def push(self, s):
-        self.iterators.append(iter(s))
+        # assert isinstance(s, (str, list)), f"expected str or list, got {s=} ({type(s)})"
+        if len(s) == 1:
+            self.stack.append(s[0])
+            return
+        self.stack.extend(reversed(s))
 
     def __next__(self):
-        # the general case here is that the first
-        # iterator we try works.  so, instead of
-        # a "while True" loop that we nearly never
-        # loop on, use recursion to handle the
-        # edge case where the top iterator
-        # is exhausted.
-        if not self.iterators:
+        if self.stack:
+            x = self.stack.pop()
+            return x
+        if not self.i:
             raise StopIteration
         try:
-            i = self.iterators[-1]
-            return next(i)
-        except StopIteration:
-            self.iterators.pop()
-            return self.__next__()
+            x = next(self.i)
+            return x
+        except StopIteration as e:
+            self.i = None
+            raise e
 
     def __iter__(self):
         return self
 
     def __bool__(self):
-        # can't just return bool(self.iterators),
-        # as all the iterators in that list might
-        # be exhausted.
-        if not self.iterators:
-            return False
-        try:
-            c = next(self)
-            self.push(c)
-            return True
-        except StopIteration:
-            return False
+        value = self.stack or self.i
+        return value
 
     def drain(self):
         """
         Return all remaining characters as a string.
         """
-        strings = ["".join(i) for i in reversed(self.iterators)]
-        s = "".join(strings)
-        self.iterators.clear()
+        if self.stack:
+            s = "".join(reversed(self.stack))
+            self.stack.clear()
+        else:
+            s = ""
+
+        if self.i:
+            s += "".join(self.i)
+            self.i = None
+
         return s
 
 
@@ -171,7 +185,7 @@ def tokenize(s, suppress_whitespace=True):
         buffer = []
         for c in i:
             if c in non_quoting_operators:
-                i.push(c)
+                i.push_c(c)
                 break
             buffer.append(c)
         return "".join(buffer).rstrip()
@@ -198,17 +212,14 @@ def tokenize(s, suppress_whitespace=True):
             buffer.append(c)
             backslash = False
 
-        try:
-            return ast.literal_eval("".join(buffer))
-        except SyntaxError as e:
-            raise e
+        return ast.literal_eval("".join(buffer))
 
     for c in i:
         if c.isspace():
             whitespace = [c]
             for c in i:
                 if not c.isspace():
-                    i.push(c)
+                    i.push_c(c)
                     break
                 whitespace.append(c)
             if not suppress_whitespace:
@@ -230,10 +241,9 @@ def tokenize(s, suppress_whitespace=True):
                     t = multi
                 else:
                     t = single
-                    for c in reversed(token):
-                        i.push(c)
+                    i.push(token)
                     # now throw away c, we just pushed it again
-                    next(i)
+                    c = next(i)
             else:
                 t = t[0]
 
@@ -270,15 +280,14 @@ def tokenize(s, suppress_whitespace=True):
                     if c == right_bracket:
                         t = left_bracket_to_empty_bracket_token[s]
                         break
-                    i.push(c)
-                    for c in reversed(characters):
-                        i.push(c)
+                    i.push_c(c)
+                    i.push(characters)
                     break
 
             yield t
             continue
 
-        i.push(c)
+        i.push_c(c)
         s = parse_unquoted_string()
         yield STRING, s
 
@@ -352,18 +361,20 @@ if __name__ == "__main__":
             else:
                 modifier = "suppressing" if suppress_whitespace else "keeping"
                 suffix = f", {modifier} whitespace tokens"
-            print(f"test #{test_number}{suffix}:\n  input:\n\t", repr(s), "\n  should match:\n\t", " ".join(x if x in token_to_name else repr(x) for x in tokens_and_values))
+            if want_print:
+                print(f"test #{test_number}{suffix}:\n  input:\n\t", repr(s), "\n  should match:\n\t", " ".join(x if x in token_to_name else repr(x) for x in tokens_and_values), end="\n\n")
             test_number += 1
-            print()
         for tok, s in tokenize(s, suppress_whitespace=suppress_whitespace):
             t = tokens.pop(0)
             if want_print:
                 print("  [want]", t, end="")
             if tok in tokens_with_values:
                 v = values.pop(0)
-                print(f" {s!r}")
+                if want_print:
+                    print(f" {s!r}")
             else:
-                print()
+                if want_print:
+                    print()
                 v = None
             if want_print:
                 print("  [ got]", tok, repr(s))

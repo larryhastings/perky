@@ -14,6 +14,9 @@ class RecursiveChainMap(dict):
         self.maps.extend(dicts)
         self.deletes = set()
 
+    def __repr__(self):
+        return "<RecursiveChainMap "  + " ".join(repr(d) for d in self.maps) + " cache=" + repr(self.cache) + ">"
+
     def __missing__(self, key):
         raise KeyError(key)
 
@@ -76,6 +79,17 @@ class RecursiveChainMap(dict):
             keys = set(map) - self.deletes
             if keys:
                 return True
+
+    def keys(self):
+        yield from self
+
+    def values(self):
+        for k in self:
+            yield self[k]
+
+    def items(self):
+        for k in self:
+            yield k, self[k]
 
 
 def _merge_dicts(rcm):
@@ -180,10 +194,14 @@ if __name__ == "__main__":
     dict2 = {'b': 2, 'sub': {2: 3, 4:5, 6:7}}
 
     rcm = RecursiveChainMap(dict1, dict2)
-    print(rcm['a'])
-    print(rcm['b'])
-    sub = rcm['sub']
-    print([(name, sub[name]) for name in range(1, 7)])
+    assert rcm['a'] == 1
+    assert rcm['b'] == 2
+    merged_sub = {a: a+1 for a in range(1, 7)}
+    sub = {n: v for n, v in rcm['sub'].items()}
+    assert sub == merged_sub, f"{sub=} != {merged_sub}"
 
     d = merge_dicts(dict1, dict2)
-    print(d)
+    d2 = dict(dict1)
+    d2.update(dict2)
+    d2['sub'] = merged_sub
+    assert d == d2

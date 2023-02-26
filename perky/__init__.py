@@ -123,7 +123,7 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 
-__version__ = "0.5.5"
+__version__ = "0.6"
 
 import ast
 import os.path
@@ -649,36 +649,4 @@ class Required:
         if failed:
             failed.sort()
             raise UnspecifiedRequiredValues(failed)
-
-
-if 0:
-    o = {'a': '3', 'b': '5.0', 'c': ['1', '2', 'None', '3'], 'd': { 'e': 'f', 'g': 'True'}}
-    schema = {'a': int, 'b': float, 'c': [nullable(int)], 'd': { 'e': str, 'g': const }}
-
-    result = transform(o, schema)
-    import pprint
-    pprint.pprint(result)
-
-    print("REQUIRED 1")
-    r = Required()
-    schema = {
-        'a': r(int),
-        'b': r(float),
-        'c': [nullable(int)],
-        'd': {
-            'e': r(str),
-            'g': const
-            }
-        }
-    r.annotate(schema)
-    print("schema", schema)
-    result = transform(o, schema)
-    print(result)
-    r.verify()
-
-    print("REQUIRED 2")
-    r.annotate(schema)
-    o2 = {'a': '44'}
-    result = transform(o2, schema)
-    r.verify()
 
