@@ -77,6 +77,13 @@ for value in c_to_tokens.values():
         assert len(value[1][1]) == 1, f"unexpected value {value}"
 
 class pushback_str_iterator:
+    """
+    An iterator for strings that allows you to
+    add new data during processing.  While iterating
+    over a string, you can "push" new strings onto the
+    iterator, which will be
+    """
+
     # look! a go-faster stripe!
     __slots__ = ('i', 'stack')
 
@@ -89,26 +96,42 @@ class pushback_str_iterator:
     def __repr__(self):
         return f'<pushback i={self.i} stack={list(self.stack)}>'
 
-    def push_c(self, c):
-        """
-        Optimized version of push that assumes c is a single character.
-        push() will accept a string (or list) of any length.
-        However, we frequently know we're pushing only a single character,
-        allowing us to do this much cheaper operation instead.
-
-        pushback_str_iterator is an internal data structure,
-        and not supported for public use, so it's safe to go a little
-        bare-metal like this.
-        """
-        # assert isinstance(c, str) and (len(c) == 1), f"expected str of len 1, got {c=} ({type(c)})"
-        self.stack.append(c)
-
     def push(self, s):
+        """
+        Pushes a string (or list) back onto the iterator.
+
+        The following code:
+            i = pushback_str_iterator('XY')
+            print(next(i))
+            i.push('abcde')
+            for c in i:
+                print(c)
+
+        prints 'X', 'a', 'b', 'c', 'd', 'e', and 'Y'
+        in that order.
+        """
         # assert isinstance(s, (str, list)), f"expected str or list, got {s=} ({type(s)})"
         if len(s) == 1:
             self.stack.append(s[0])
             return
         self.stack.extend(reversed(s))
+
+    def push_c(self, c):
+        """
+        Optimized version of push that only handles strings of length 1.
+        Most of the time, Perky pushes individual characters, and push_c
+        is much faster than push.  This optimization brings a measurable
+        performance gain.  (Between this and switching to slots, I saw a
+        22% *overall* improvement in Perky!)
+
+        This method would be unsafe for public use; it doesn't validate
+        its input.  Calling push_c with something besides a length-1 string
+        will result in it yielding garbage.  But pushback_str_iterator
+        is an internal data structure, unsupported for public use, and
+        Perky is careful.  So, it's fine.
+        """
+        # assert isinstance(c, str) and (len(c) == 1), f"expected str of len 1, got {c=} ({type(c)})"
+        self.stack.append(c)
 
     def __next__(self):
         if self.stack:
