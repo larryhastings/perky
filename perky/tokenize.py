@@ -110,7 +110,7 @@ class pushback_str_iterator:
         prints 'X', 'a', 'b', 'c', 'd', 'e', and 'Y'
         in that order.
         """
-        # assert isinstance(s, (str, list)), f"expected str or list, got {s=} ({type(s)})"
+        # assert isinstance(s, (str, list)), f"expected str or list, got s={s} (type(s)={type(s)})"
         if len(s) == 1:
             self.stack.append(s[0])
             return
@@ -130,7 +130,7 @@ class pushback_str_iterator:
         is an internal data structure, unsupported for public use, and
         Perky is careful.  So, it's fine.
         """
-        # assert isinstance(c, str) and (len(c) == 1), f"expected str of len 1, got {c=} ({type(c)})"
+        # assert isinstance(c, str) and (len(c) == 1), f"expected str of len 1, got c={c} (type(c)={type(c)})"
         self.stack.append(c)
 
     def __next__(self):

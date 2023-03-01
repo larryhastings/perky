@@ -114,32 +114,44 @@ class TestParseMethods(unittest.TestCase):
 """)
 
     def test_parse_triple_quote(self):
+        # ensure we have some real trailing whitespace.
+        # modern editors will strip that for you,
+        # so we programmatically ensure it for testing purposes.
         d = perky.loads('''
 a = """
 
-    this is flush left
+    this is flush left__
     note the          ^^
     intentional trailing whitespace!
 
-      don't remove it, even though I
-      know you want to.
+      it looks like underscores,
+      but we change it to spaces down below
+      vvvv
     """
 
-''')
-        self.assertEqual(d['a'], "\nthis is flush left\nnote the          ^^\nintentional trailing whitespace!\n\n  don't remove it, even though I\n  know you want to.")
+'''.replace('_', ' '))
+        self.assertEqual(d['a'], "\nthis is flush left\nnote the          ^^\nintentional trailing whitespace!\n\n  it looks like underscores,\n  but we change it to spaces down below\n  vvvv")
 
     def test_empty_dicts_and_lists(self):
         d = perky.loads('''
 a = []
-b = {}
-c = [ ]
+b = [ ]
+c = {}
 d = { }
+
+list = [
+    []
+    [ ]
+    {}
+    { }
+    ]
 
 ''')
         self.assertEqual(d['a'], [])
-        self.assertEqual(d['b'], {})
-        self.assertEqual(d['c'], [])
+        self.assertEqual(d['b'], [])
+        self.assertEqual(d['c'], {})
         self.assertEqual(d['d'], {})
+        self.assertEqual(d['list'], [ [], [], {}, {} ])
 
 # TODO: add code changes to perky.py to raise an assertion error.
     def test_parse_trip_q_error(self):
