@@ -325,7 +325,7 @@ class Serializer:
         self.line = ''
 
     def dumps(self):
-        s =  "\n".join(self.lines)
+        s =  "\n".join(self.lines) + "\n"
         self.reset()
         return s
 
@@ -438,7 +438,7 @@ def dump(filename, d, *, encoding="utf-8"):
     s = Serializer()
     s.serialize(d)
     with open(filename, "wt", encoding=encoding) as f:
-        f.write(s.dumps() + "\n")
+        f.write(s.dumps())
 
 
 
