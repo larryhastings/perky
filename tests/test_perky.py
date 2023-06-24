@@ -1,15 +1,38 @@
 #!/usr/bin/env python3
 
-# use a crowbar on sys.path
-# to let this script import perky
-# without any additional work
-assert __name__ == "__main__"
-import os.path
-from os.path import abspath, dirname
-import sys
-perky_dir = dirname(dirname(abspath(sys.argv[0])))
-sys.path.insert(0, perky_dir)
-os.chdir(perky_dir + "/tests")
+
+
+def preload_local_perky():
+    """
+    Pre-load the local "perky" module, to preclude finding
+    an already-installed one on the path.
+    """
+    import pathlib
+    import sys
+
+    argv_0 = pathlib.Path(sys.argv[0])
+    perky_dir = argv_0.resolve().parent
+    while True:
+        perky_init = perky_dir / "perky" / "__init__.py"
+        if perky_init.is_file():
+            break
+        perky_dir = perky_dir.parent
+
+    # this almost certainly *is* a git checkout
+    # ... but that's not required, so don't assert it.
+    # assert (perky_dir / ".git" / "config").is_file()
+
+    if perky_dir not in sys.path:
+        sys.path.insert(1, str(perky_dir))
+
+    import perky
+    assert perky.__file__.startswith(str(perky_dir))
+    return perky_dir
+
+import os
+
+perky_dir = preload_local_perky()
+os.chdir(perky_dir / "tests")
 
 import perky
 import unittest
@@ -153,10 +176,23 @@ list = [
         self.assertEqual(d['d'], {})
         self.assertEqual(d['list'], [ [], [], {}, {} ])
 
-# TODO: add code changes to perky.py to raise an assertion error.
     def test_parse_trip_q_error(self):
         with self.assertRaises(perky.PerkyFormatError):
             perky.loads(TEST_INPUT_TEXT_TRIPLE_Q_ERROR)
+        try:
+            perky.loads(TEST_INPUT_TEXT_TRIPLE_Q_ERROR)
+
+        # examine the str and repr
+        except perky.PerkyFormatError as e:
+            s = str(e)
+            r = repr(e)
+            self.assertIn('Format error: malformed line triple-quoted block', s)
+            self.assertIn('Format error: malformed line triple-quoted block', r)
+            self.assertIn('hello', s)
+            self.assertIn('hello', r)
+
+    def test_format_error(self):
+        pass
 
     def test_parse_trip_repeated_key_error(self):
         # perky doesn't like it if you redefine the same key in a dict
@@ -291,6 +327,8 @@ list = [
             assert next(i) == 'c'
             assert not i
 
+def run_tests():
+    unittest.main()
 
 if __name__ == '__main__':
-    unittest.main()
+    run_tests()

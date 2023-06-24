@@ -112,23 +112,32 @@ the things you can do in Perky:
 
 One possibly-surprising design choice of Perky: the only
 natively supported values for the Perky parser are dicts,
-lists, and strings.  Other commonly-used types (ints, floats,
-etc) are handled using a different mechanism: _transformation._
+lists, and strings.  What about ints? floats? dates?
+booleans?
 
-A Perky transformation takes a dict as input, and transforms
-the contents of the dict based on a _schema_.  A Perky schema
-is a dict with the same general shape as the dict produced
-by the Perky parse, but it contains dicts, lists,
-and *transformation functions*.
-If you want *myvalue* in `{'myvalue':'3'}` to be a real integer,
-transform it with the schema `{'myvalue': int}`.
+Perky deliberately leaves that up to you.  As the Zen
+Of Python says:
+
+*In the face of ambiguity, refuse the temptation to guess.*
+
+Perky doesn't know what types your program needs.  So,
+rather than guess and be wrong, Perky keeps things simple:
+just lists, dicts, and strings.  For any other type,
+it's up to you to transform it from a string into the type
+you want, and back again.
 
 Note that Perky doesn't care how or if you transform your
 data.  You can use it as-is, or transform it, or transform
-it with multiple passes.  You don't even need to use Perky's
-simple transformation mechanisms--you can ignore them completely
-and use an external transformation library like
+it with multiple passes.  You can write it yourself,
+or use a third-party data transformation library like
 [Marshmallow.](https://marshmallow.readthedocs.io/)
+
+(Perky used to support an experimental API for transforming
+data yourself.  But this was never fully fleshed-out, and
+there are better versions of that technology out there.
+I've deprecated this part of the library and will remove it
+before 1.0.)
+
 
 ### Pragmas
 
@@ -203,12 +212,17 @@ There are only a few errors possible when parsing a Perky text:
 
 ### API
 
-`perky.loads(s, *, pragmas=None) -> d`
+`def loads(s, *, pragmas=None, encoding='utf-8', root=None) -> o`
 
-Parses a string containing Perky-file-format settings.
-Returns a dict.
+Parses a Perky-format string, and returns a container filled
+with the values parsed from that string.
 
-`perky.load(filename, *, pragmas=None, encoding="utf-8") -> d`
+If `root` is not `None`,
+it should be a container
+
+If `root` is `None`, returns a new dict.
+
+`def loads(s, *, pragmas=None, encoding='utf-8', root=None) -> o`
 
 Parses a file containing Perky-file-format settings.
 Returns a dict.
@@ -281,6 +295,17 @@ and pass in your own include path, the pragma handler
 won't search the current directory unless you add `"."`
 to the include path yourself.
 
+#### Deprecated API
+
+These functions are no longer maintained and will be
+removed before 1.0.
+
+Why?  This part of Perky was always
+an experiment... and the experiment never really paid
+off.  There are better implementations of this idea,
+so you should just go use those instead.  (Or, if you're
+relying on this code in Perky, I encourage you to fork
+off a copy and maintain it yourself.)
 
 `perky.map(d, fn) -> o`
 
@@ -328,3 +353,9 @@ Experimental.
 ### TODO
 
 * Backslash quoting currently does "whatever your version of Python does".  Perhaps this should be explicit, and parsed by Perky itself?
+
+### Changelog
+
+**0.8**
+
+* Perky now passes its tests with 100% coverage.

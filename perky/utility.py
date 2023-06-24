@@ -188,20 +188,3 @@ class pushd:
 
     def __exit__(self, exc_type, exc_value, exc_tb):
         os.chdir(self.old_path)
-
-if __name__ == "__main__":
-    dict1 = {'a': 1, 'sub': {1: 2, 3:4, 5:6}}
-    dict2 = {'b': 2, 'sub': {2: 3, 4:5, 6:7}}
-
-    rcm = RecursiveChainMap(dict1, dict2)
-    assert rcm['a'] == 1
-    assert rcm['b'] == 2
-    merged_sub = {a: a+1 for a in range(1, 7)}
-    sub = {n: v for n, v in rcm['sub'].items()}
-    assert sub == merged_sub, f"{sub} != {merged_sub}"
-
-    d = merge_dicts(dict1, dict2)
-    d2 = dict(dict1)
-    d2.update(dict2)
-    d2['sub'] = merged_sub
-    assert d == d2

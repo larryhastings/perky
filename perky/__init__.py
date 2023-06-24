@@ -123,9 +123,10 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 
-__version__ = "0.6.2"
+__version__ = "0.8"
 
 import ast
+import collections.abc
 import os.path
 from os.path import isfile, join, normpath
 import re
@@ -143,32 +144,35 @@ def export(fn):
     return fn
 
 @export
-class PerkyFormatError(Exception):
+class FormatError(Exception):
     def __init__(self, message, tokens=None, line=None):
         self.message = message
         self.tokens = tokens
         self.line = line
 
-    def __repr__(self):
-        strings = [f"<{self.__class__.__name__} {self.message!r}"]
-        if self.tokens is not None:
-            strings.append(f" tokens={self.tokens!r}")
-        if self.line is not None:
-            strings.append(f" line={self.line!r}")
-        strings.append(">")
-        return "".join(strings)
-
-    def __str__(self):
-        strings = [f"{self.__class__.__name__}: {self.message!r}"]
+    def __strings_for_repr__(self):
+        strings = [f"{self.__class__.__name__} {self.message!r}"]
         if self.tokens is not None:
             strings.append(f"tokens={self.tokens!r}")
         if self.line is not None:
             strings.append(f"line={self.line!r}")
-        return "\n".join(strings)
+        return strings
 
-def assert_or_raise(expr, message, tokens, line):
+    def __repr__(self):
+        s = " ".join(self.__strings_for_repr__())
+        return f"<{s}>"
+
+    def __str__(self):
+        return "\n".join(self.__strings_for_repr__())
+
+# old name
+PerkyFormatError = FormatError
+__all__.append('PerkyFormatError')
+
+
+def raise_if_false(expr, message, tokens, line):
     if not expr:
-        raise PerkyFormatError(message, tokens, line)
+        raise FormatError(message, tokens, line)
 
 
 class Parser:
@@ -179,10 +183,6 @@ class Parser:
         self.encoding = encoding
         self.root = root if root is not None else {}
         self.breadcrumbs = []
-
-    def assert_or_raise(self, expr, message, tokens, line):
-        if not expr:
-            raise PerkyFormatError(message, tokens, line)
 
     def _parse_pragma(self, line):
         line = line.strip()
@@ -239,12 +239,12 @@ class Parser:
                     continue
             tokens = [t for t in tokens if t[0] is not WHITESPACE]
 
-            self.assert_or_raise(
+            raise_if_false(
                 (2 <= len(tokens) <= 3) and tokens[0][0] is STRING and tokens[1][0] is EQUALS,
                 "Invalid token sequence: in dict, expected STRING = or STRING == VALUE or }",
                 tokens, line)
             key = tokens[0][1].strip()
-            self.assert_or_raise(
+            raise_if_false(
                 key not in keys_seen,
                 f"Invalid Perky dict: repeated key {key!r}",
                 tokens, line)
@@ -266,7 +266,7 @@ class Parser:
             if token is EQUALS:
                 self._parse_pragma(line)
                 continue
-            self.assert_or_raise(
+            raise_if_false(
                 len(tokens) == 1,
                 "Invalid token sequence: in list, expected one token",
                 tokens, line)
@@ -296,7 +296,7 @@ class Parser:
             #       outdenting sure is fun!
             #          '''
             for line in l:
-                self.assert_or_raise(
+                raise_if_false(
                     # line must either be empty or start with our prefix
                     (not line) or line.startswith(prefix),
                     "Format error: malformed line triple-quoted block",
@@ -309,9 +309,11 @@ class Parser:
         return s
 
     def parse(self):
-        if isinstance(self.root, list):
+        if isinstance(self.root, collections.abc.MutableMapping):
+            return self._read_dict(self.root)
+        if isinstance(self.root, collections.abc.MutableSequence):
             return self._read_list(self.root)
-        return self._read_dict(self.root)
+        raise TypeError(f"root {self.root} is neither MutableMapping nor MutableSequence, don't know how to fill it")
 
 
 class Serializer:
@@ -402,9 +404,9 @@ class Serializer:
         self.indent -= 1
 
     def serialize_value(self, value):
-        if isinstance(value, dict):
+        if isinstance(self.root, collections.abc.MutableMapping):
             return self.serialize_dict(value)
-        if isinstance(value, list):
+        if isinstance(self.root, collections.abc.MutableSequence):
             return self.serialize_list(value)
 
         value = str(value)
@@ -414,6 +416,7 @@ class Serializer:
             self.newline(value)
             return
         return self.serialize_quoted_string(value)
+
 
 @export
 def loads(s, *, pragmas=None, encoding='utf-8', root=None):
@@ -442,45 +445,6 @@ def dump(filename, d, *, encoding="utf-8"):
 
 
 
-if 0:
-    text = """
-
-    a = b
-    c = d
-    dict = {
-        inner1=value1
-          inner 2 = " value 2  "
-          list = [
-
-          a
-            b
-
-        c
-            ]
-    }
-
-    list = [
-
-        1
-        2
-        3
-    ]
-
-    text = '''
-        hello
-
-        this is indented
-
-        etc.
-        '''
-
-    """
-
-    d = loads(text)
-    print(d)
-    print(serialize(d))
-
-
 @export
 def map(o, fn):
     if isinstance(o, dict):
@@ -492,7 +456,7 @@ def map(o, fn):
 
 def _transform(o, schema, default):
     if isinstance(schema, dict):
-        assert_or_raise(
+        raise_if_false(
             isinstance(o, dict),
             f"schema mismatch: schema is a dict, o should be a dict but is {o!r}",
             None, None)
@@ -506,13 +470,13 @@ def _transform(o, schema, default):
             result[name] = value
         return result
     if isinstance(schema, list):
-        assert_or_raise(
+        raise_if_false(
             isinstance(o, list) and (len(schema) == 1),
             f"schema mismatch: schema is a list, o should be a list but is {o!r}",
             None, None)
         handler = schema[0]
         return [_transform(value, handler, default) for value in o]
-    assert_or_raise(
+    raise_if_false(
         callable(schema),
         f"schema mismatch: schema values must be dict, list, or callable, got {schema!r}",
         None, None)
@@ -520,11 +484,11 @@ def _transform(o, schema, default):
 
 @export
 def transform(o, schema, default=None):
-    assert_or_raise(
+    raise_if_false(
         isinstance(o, dict),
         "schema must be a dict",
         None, None)
-    assert_or_raise(
+    raise_if_false(
         (not default) or callable(default),
         "default must be either None or a callable",
         None, None)
@@ -555,6 +519,22 @@ def pragma_include(include_path=(".",)):
         else:
             leaf.update(merged)
     return pragma_include
+
+##############################################################################
+##############################################################################
+##
+##  Everything below this comment in this file is now *deprecated.*
+##
+##  If you're using it, please stop.  (If you want to continue using it,
+##  fork off a copy and maintain it yourself.)
+##
+##  If you haven't started using it, please don't start.
+##
+##  The entire "transformation" part of Perky will be *removed*
+##  before 1.0.
+##
+##############################################################################
+##############################################################################
 
 constmap = {
     'None': None,
@@ -602,7 +582,7 @@ class _AnnotateSchema:
             self.tail.pop()
             return
 
-        assert_or_raise(
+        raise_if_false(
             callable(value),
             "Malformed schema error: " + repr(name) + " = " + repr(value) + ", value is not dict, list, or callable!",
             None, None)
