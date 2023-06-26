@@ -130,16 +130,16 @@ it's up to you to transform it from a string into the type
 you want, and back again.
 
 Note that Perky doesn't care how or if you transform your
-data.  You can use it as-is, or transform it, or transform
-it with multiple passes.  You can write it yourself,
-or use a third-party data transformation library like
+data.  You can use the strings as-is or transform them
+however you like.  You can transform them by hand
+or with a third-party data transformation library like
 [Marshmallow.](https://marshmallow.readthedocs.io/)
 
 (Perky used to support an experimental API for transforming
 data yourself.  But this was never fully fleshed-out, and
 there are better versions of that technology out there.
-I've deprecated this part of the library and will remove it
-before 1.0.)
+I've deprecated the "transformation" submodule and will
+remove it before 1.0.)
 
 
 ### Pragmas
@@ -300,16 +300,24 @@ to the include path yourself.
 
 #### Deprecated API
 
+Perky currently has a "transformation" submodule.
+The idea is, you'd load a Perky file,
+then run `perky.transform` on that dictionary to
+convert the strings into native values.
+
 These functions are no longer maintained or supported,
 and will be removed before 1.0.
-
 Why?  This part of Perky was always
 an experiment... and the experiment never really paid
-off.  There are better implementations of this idea--you
+off.  There are better implementations of this idea,
+like [Marshmallow](https://marshmallow.readthedocs.io/)--you
 you should use those instead.  (If you're relying on
 this code in Perky, I encourage you to fork
 off a copy and maintain it yourself.  But I doubt
 anybody is.)
+
+For posterity's sakes, here's documentation of the
+now-deprecated API.
 
 `perky.map(d, fn) -> o`
 
@@ -370,8 +378,10 @@ Experimental.
 * Renamed `PerkyFormatError` to `FormatError`.  The old name is
   supported for now, but please transition to the new name.
   The old name will be removed before 1.0.
-* The `transform` submodule is now deprecated and unsupported.
+* The "transformation" submodule is now deprecated and unsupported.
   Please either stop using it or fork and maintain it yourself.
+  This includes `perky.map`, `perky.transform`, `perky.Required`,
+  `perky.nullable`, and `perky.const`.
 * Perky now has a proper unit test suite, which it passes with 100%
   coverage--except for the unsupported `transform` submodule.
 * While working towards 100% coverage, also cleaned up the code
