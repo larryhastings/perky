@@ -4,162 +4,113 @@
 # Copyright 2018-2023 by Larry Hastings
 
 import os
+from collections.abc import Mapping, Sequence
 
 
-class RecursiveChainMap(dict):
+class FormatError(Exception):
+    def __init__(self, message, tokens=None, line=None):
+        self.message = message
+        if tokens:
+            self.tokens = ''.join(t[1] for t in tokens)
+        else:
+            self.tokens = tokens
+        self.line = line
 
-    def __init__(self, *dicts):
-        self.cache = {}
-        self.maps = [self.cache]
-        self.maps.extend(dicts)
-        self.deletes = set()
+    def __strings_for_repr__(self):
+        strings = [f"{self.__class__.__name__} {self.message!r}"]
+        if self.tokens is not None:
+            strings.append(f"tokens={self.tokens!r}")
+        if self.line is not None:
+            strings.append(f"line={self.line!r}")
+        return strings
 
     def __repr__(self):
-        return "<RecursiveChainMap "  + " ".join(repr(d) for d in self.maps) + " cache=" + repr(self.cache) + ">"
+        s = " ".join(self.__strings_for_repr__())
+        return f"<{s}>"
 
-    def __missing__(self, key):
-        raise KeyError(key)
+    def __str__(self):
+        return "\n".join(self.__strings_for_repr__())
 
-    def __getitem__(self, key):
-        if key in self.deletes:
-            raise self.__missing__(key)
-
-        submaps = []
-        for map in self.maps:
-            try:
-                # "key in dict" doesn't work with defaultdict!
-                value = map[key]
-                if isinstance(value, dict):
-                    submaps.append(value)
-                elif not submaps:
-                    return value
-            except KeyError:
-                continue
-
-        if not submaps:
-            raise self.__missing__(key)
-
-        value = RecursiveChainMap(*submaps)
-        self.cache[key] = value
-        return value
-
-    def __setitem__(self, key, value):
-        self.cache[key] = value
-        self.deletes.discard(key)
-
-    def __delitem__(self, key, value):
-        if key in self.deletes:
-            self.__missing__(key)
-        self.deletes.add(key)
-
-    __sentinel = object()
-
-    def get(self, key, default=__sentinel):
-        if key in self:
-            return key[self]
-        if default is not __sentinel:
-            return default
-        raise self.__missing__(key)
-
-    def __len__(self):
-        return len(set().union(*self.maps) - self.deletes)
-
-    def __iter__(self):
-        return iter(set().union(*self.maps) - self.deletes)
-
-    def __contains__(self, key):
-        if key in self.deletes:
-            return False
-        return any(key in map for map in self.maps)
-
-    def __bool__(self):
-        if not self.deletes:
-            return any(self.maps)
-        for map in self.maps:
-            keys = set(map) - self.deletes
-            if keys:
-                return True
-
-    def keys(self):
-        yield from self
-
-    def values(self):
-        for k in self:
-            yield self[k]
-
-    def items(self):
-        for k in self:
-            yield k, self[k]
+# old name
+PerkyFormatError = FormatError
 
 
-def _merge_dicts(rcm):
-    d = {}
-    for key in rcm:
-        value = rcm[key]
-        if isinstance(value, RecursiveChainMap):
-            value = _merge_dicts(value)
-        d[key] = value
-    return d
-
-def merge_dicts(*dicts):
-    rcm = RecursiveChainMap(*dicts)
-    return _merge_dicts(rcm)
+def raise_if_false(expr, message, tokens, line):
+    if not expr:
+        raise FormatError(message, tokens, line)
 
 
-def _mdal_dict(roots):
+def _merge_dicts_and_lists_recurse_dict(roots):
+    sentinel = object()
     for root in roots:
-        assert isinstance(root, dict)
-    if len(roots) == 1:
-        return dict(roots[0])
+        assert isinstance(root, Mapping)
+
     d = {}
+
+    # why not just iterate over roots?
+    # consider merging this list of root dicts:
+    #   [
+    #   {'a': 1},
+    #   {'b': 2},
+    #   {'a': 3, 'nested_dict':{'x': 4}},
+    #   ...
+    #   ]
+    # when merging 'nested_dict', there's no
+    # point in iterating over the first two dicts,
+    # we already know it didn't appear there.
     roots = list(roots)
     while roots:
-        root0 = roots.pop(0)
-        for key, value in root0.items():
-            if isinstance(value, (dict, list)):
-                if key in d:
-                    # only merge once!
+        root = roots.pop(0)
+        for key, value in root.items():
+            is_mapping = Mapping if isinstance(value, Mapping) else False
+            is_sequence = Sequence if (isinstance(value, Sequence) and not isinstance(value, str)) else False
+            value_type = is_mapping or is_sequence
+            if not value_type:
+                d[key] = value
+                continue
+
+            if key in d:
+                # only merge once!
+                continue
+            subroots = [value]
+            for root in roots:
+                value = root.get(key, sentinel)
+                if value is sentinel:
                     continue
-                subroots = [value]
-                t = type(value)
-                for root in roots:
-                    if key not in root:
-                        continue
-                    value = root[key]
-                    assert isinstance(value, t)
-                    subroots.append(value)
-                if isinstance(value, list):
-                    value = _mdal_list(subroots)
-                else:
-                    value = _mdal_dict(subroots)
+                assert isinstance(value, value_type)
+                subroots.append(value)
+            if is_mapping:
+                value = _merge_dicts_and_lists_recurse_dict(subroots)
+            else:
+                value = _merge_dicts_and_lists_recurse_list(subroots)
             d[key] = value
     return d
 
-def _mdal_list(roots):
+def _merge_dicts_and_lists_recurse_list(roots):
     l = []
     for root in roots:
-        assert isinstance(root, list)
+        assert isinstance(root, Sequence) and not isinstance(root, str)
         l.extend(root)
     return l
 
 def merge_dicts_and_lists(*roots):
     """
     Takes a sequence of homogenous roots
-    (either dicts or lists, with the same
-    shape of dicts and lists inside).
+    (either Mapping or Sequence objects, with the same
+    shape of Mapping and Sequence objects inside).
     Merges all the roots together into a
     single data structure and returns the merged
     result.
 
-    For dicts:
-        Non-dict-or-list values are overwritten;
+    For Mapping objects:
+        Non-Mapping-or-Sequence values are overwritten;
         values from later roots have higher priority.
-        Child dicts and lists are recursively merged.
-    For lists:
-        All lists are concatenated, with later roots
-        being appended after earlier roots.
+        Child Mappings and Sequences are recursively merged.
+    For Sequence objects:
+        All Sequence objects are concatenated, with later
+        roots being appended after earlier roots.
 
-    Values in lists aren't examined, just copied
+    Values in Sequences aren't examined, just copied
     over.  This means if a root contains a list
     or a dict inside of a list, the merged result
     will have a reference to that existing dict
@@ -170,21 +121,19 @@ def merge_dicts_and_lists(*roots):
     because it's faster, and the old "roots" are always
     thrown away immediately anyway.)
     """
-    assert roots
+    if not roots:
+        return None
+
     root0 = roots[0]
-    assert isinstance(root0, (dict, list)), f"expected t to be dict or list, was {type(t)}, repr is {t!r}"
-    if isinstance(root0, list):
-        return _mdal_list(roots)
-    return _mdal_dict(roots)
+    is_sequence = isinstance(root0, Sequence) and not isinstance(root0, str)
+    is_mapping = isinstance(root0, Mapping)
+    assert is_sequence or is_mapping, f"expected t to be Mapping or Sequence, type of t is {type(t)}, t is {t!r}"
 
+    if len(roots) == 1:
+        if is_mapping:
+            return dict(root0)
+        return list(root0)
 
-class pushd:
-    def __init__(self, path):
-        self.path = path
-
-    def __enter__(self):
-        self.old_path = os.getcwd()
-        os.chdir(self.path)
-
-    def __exit__(self, exc_type, exc_value, exc_tb):
-        os.chdir(self.old_path)
+    if is_mapping:
+        return _merge_dicts_and_lists_recurse_dict(roots)
+    return _merge_dicts_and_lists_recurse_list(roots)

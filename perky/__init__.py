@@ -37,11 +37,6 @@
 
 # TESTS NEEDED:
 #
-# this should fail:
-#    a = '''
-#       outdenting is fun
-#          '''
-#
 # make sure a quoted # works as a key
 #
 # ensure that unquoted string names can contain
@@ -50,6 +45,11 @@
 #   =
 
 # DONE
+#
+# this should fail:
+#    a = '''
+#       outdenting is fun
+#          '''
 #
 # allow
 #     value = []
@@ -126,7 +126,7 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 __version__ = "0.8"
 
 import ast
-import collections.abc
+from collections.abc import MutableMapping, MutableSequence, Sequence
 import os.path
 from os.path import isfile, join, normpath
 import re
@@ -136,6 +136,9 @@ import textwrap
 from .tokenize import *
 from .utility import *
 
+# the "transform" functions are *all* deprecated.
+from .transform import *
+
 
 __all__ = []
 
@@ -143,48 +146,20 @@ def export(fn):
     __all__.append(fn.__name__)
     return fn
 
-@export
-class FormatError(Exception):
-    def __init__(self, message, tokens=None, line=None):
-        self.message = message
-        self.tokens = tokens
-        self.line = line
-
-    def __strings_for_repr__(self):
-        strings = [f"{self.__class__.__name__} {self.message!r}"]
-        if self.tokens is not None:
-            strings.append(f"tokens={self.tokens!r}")
-        if self.line is not None:
-            strings.append(f"line={self.line!r}")
-        return strings
-
-    def __repr__(self):
-        s = " ".join(self.__strings_for_repr__())
-        return f"<{s}>"
-
-    def __str__(self):
-        return "\n".join(self.__strings_for_repr__())
-
-# old name
-PerkyFormatError = FormatError
-__all__.append('PerkyFormatError')
-
-
-def raise_if_false(expr, message, tokens, line):
-    if not expr:
-        raise FormatError(message, tokens, line)
-
 
 class Parser:
 
     def __init__(self, s, *, pragmas=None, encoding='utf-8', root=None):
-        self.lp = LineParser(s)
+        if not isinstance(s, str):
+            raise TypeError('s must be str, not {type(s)}')
+        self.lt = LineTokenizer(s)
         self.pragmas = pragmas or {}
         self.encoding = encoding
         self.root = root if root is not None else {}
         self.breadcrumbs = []
 
     def _parse_pragma(self, line):
+        original_line = line
         line = line.strip()
         assert line[0] == '='
         line = line[1:].strip()
@@ -197,20 +172,20 @@ class Parser:
             argument = fields[1]
             tokens = list(tokenize(argument))
             if len(tokens) != 1 or tokens[0][0] != STRING:
-                raise PerkyFormatError(f"Line {self.lp.line_number}: Invalid pragma argument {argument}", tokens, line)
+                raise PerkyFormatError(f"Line {self.lt.line_number}: Invalid pragma argument {argument}", tokens, original_line)
             argument = tokens[0][1]
 
         fn = self.pragmas.get(pragma)
         if not fn:
-            raise PerkyFormatError(f"Line {self.lp.line_number}: Unknown pragma {pragma}", None, line)
+            raise PerkyFormatError(f"Line {self.lt.line_number}: Unknown pragma {pragma}", None, original_line)
         fn(self, argument)
 
     def _parse_value(self, t):
         tok, value = t
         if tok is LEFT_CURLY_BRACE:
-            return self._read_dict()
+            return self._read_mapping()
         if tok is LEFT_SQUARE_BRACKET:
-            return self._read_list()
+            return self._read_sequence()
         if (tok is TRIPLE_SINGLE_QUOTE) or (tok is TRIPLE_DOUBLE_QUOTE):
             return self._read_textblock(value)
         if tok is EMPTY_CURLY_BRACES:
@@ -219,14 +194,16 @@ class Parser:
             return []
         return value
 
-
-    def _read_dict(self, starting_dict=None):
+    def _read_mapping(self, starting_dict=None):
         d = starting_dict if starting_dict is not None else {}
         self.breadcrumbs.append(d)
 
         keys_seen = set()
 
-        for tokens, line in self.lp:
+        for line_number, line, tokens in self.lt:
+            if not tokens:
+                # whitespace line
+                continue
             token, argument = tokens[0]
             if token is EQUALS:
                 self._parse_pragma(line)
@@ -241,12 +218,12 @@ class Parser:
 
             raise_if_false(
                 (2 <= len(tokens) <= 3) and tokens[0][0] is STRING and tokens[1][0] is EQUALS,
-                "Invalid token sequence: in dict, expected STRING = or STRING == VALUE or }",
+                "Invalid token sequence: in mapping, expected STRING = or STRING == VALUE or }",
                 tokens, line)
             key = tokens[0][1].strip()
             raise_if_false(
                 key not in keys_seen,
-                f"Invalid Perky dict: repeated key {key!r}",
+                f"Invalid Perky mapping: repeated key {key!r}",
                 tokens, line)
             keys_seen.add(key)
             if len(tokens) == 3:
@@ -258,17 +235,20 @@ class Parser:
         self.breadcrumbs.pop()
         return d
 
-    def _read_list(self, starting_list=None):
+    def _read_sequence(self, starting_list=None):
         l = starting_list if starting_list is not None else []
         self.breadcrumbs.append(l)
-        for tokens, line in self.lp:
+        for line_number, line, tokens in self.lt:
+            if not tokens:
+                # blank line
+                continue
             token, argument = tokens[0]
             if token is EQUALS:
                 self._parse_pragma(line)
                 continue
             raise_if_false(
                 len(tokens) == 1,
-                "Invalid token sequence: in list, expected one token",
+                "Invalid token sequence: in sequence, expected one token",
                 tokens, line)
             token, argument = tokens[0]
             if token is RIGHT_SQUARE_BRACKET:
@@ -282,8 +262,9 @@ class Parser:
 
     def _read_textblock(self, marker):
         l = []
-        while self.lp:
-            line = self.lp.next_line().rstrip()
+        while self.lt:
+            line_number, line = self.lt.next_line()
+            line = line.rstrip()
             stripped = line.lstrip()
             if stripped == marker:
                 break
@@ -309,10 +290,10 @@ class Parser:
         return s
 
     def parse(self):
-        if isinstance(self.root, collections.abc.MutableMapping):
-            return self._read_dict(self.root)
-        if isinstance(self.root, collections.abc.MutableSequence):
-            return self._read_list(self.root)
+        if isinstance(self.root, MutableMapping):
+            return self._read_mapping(self.root)
+        if isinstance(self.root, MutableSequence):
+            return self._read_sequence(self.root)
         raise TypeError(f"root {self.root} is neither MutableMapping nor MutableSequence, don't know how to fill it")
 
 
@@ -373,7 +354,7 @@ class Serializer:
     def serialize(self, d):
         for name, value in d.items():
             if not isinstance(name, str):
-                raise RuntimeError("keys in perky dicts must always be strings!")
+                raise TypeError("keys in Perky dicts must always be strings")
             self.line = self.quoted_string(name) + " = "
             self.serialize_value(value)
 
@@ -404,12 +385,16 @@ class Serializer:
         self.indent -= 1
 
     def serialize_value(self, value):
-        if isinstance(self.root, collections.abc.MutableMapping):
+        if isinstance(value, MutableMapping):
             return self.serialize_dict(value)
-        if isinstance(self.root, collections.abc.MutableSequence):
+        if isinstance(value, MutableSequence):
             return self.serialize_list(value)
 
-        value = str(value)
+        if isinstance(value, bytes):
+            raise TypeError("Perky can't serialize bytes values, please decode to str")
+
+        if not isinstance(value, str):
+            value = repr(value)
         if '\n' in value:
             return self.serialize_textblock(value)
         if value == value.strip() and "".join(value.split()).isalnum():
@@ -444,60 +429,9 @@ def dump(filename, d, *, encoding="utf-8"):
         f.write(s.dumps())
 
 
-
-@export
-def map(o, fn):
-    if isinstance(o, dict):
-        return {name: map(value, fn) for name, value in o.items()}
-    if isinstance(o, list):
-        return [map(value, fn) for value in o]
-    return fn(o)
-
-
-def _transform(o, schema, default):
-    if isinstance(schema, dict):
-        raise_if_false(
-            isinstance(o, dict),
-            f"schema mismatch: schema is a dict, o should be a dict but is {o!r}",
-            None, None)
-        result = {}
-        for name, value in o.items():
-            handler = schema.get(name)
-            if handler:
-                value = _transform(value, handler, default)
-            elif default:
-                value = default(value)
-            result[name] = value
-        return result
-    if isinstance(schema, list):
-        raise_if_false(
-            isinstance(o, list) and (len(schema) == 1),
-            f"schema mismatch: schema is a list, o should be a list but is {o!r}",
-            None, None)
-        handler = schema[0]
-        return [_transform(value, handler, default) for value in o]
-    raise_if_false(
-        callable(schema),
-        f"schema mismatch: schema values must be dict, list, or callable, got {schema!r}",
-        None, None)
-    return schema(o)
-
-@export
-def transform(o, schema, default=None):
-    raise_if_false(
-        isinstance(o, dict),
-        "schema must be a dict",
-        None, None)
-    raise_if_false(
-        (not default) or callable(default),
-        "default must be either None or a callable",
-        None, None)
-    return _transform(o, schema, default)
-
-
 @export
 def pragma_include(include_path=(".",)):
-    assert isinstance(include_path, (list, tuple))
+    assert isinstance(include_path, Sequence)
     assert not isinstance(include_path, str)
     assert all(isinstance(s, str) for s in include_path)
     include_path = tuple(include_path)
@@ -513,120 +447,10 @@ def pragma_include(include_path=(".",)):
             raise FileNotFoundError(filename)
         load(path, pragmas=parser.pragmas, encoding=parser.encoding, root=subroot)
         merged = merge_dicts_and_lists(leaf, subroot)
+        # print(f"\n\nXXX merge_dicts_and_lists({leaf=}, {subroot=}) -> {merged=}\n\n")
         leaf.clear()
         if isinstance(leaf, list):
             leaf.extend(merged)
         else:
             leaf.update(merged)
     return pragma_include
-
-##############################################################################
-##############################################################################
-##
-##  Everything below this comment in this file is now *deprecated.*
-##
-##  If you're using it, please stop.  (If you want to continue using it,
-##  fork off a copy and maintain it yourself.)
-##
-##  If you haven't started using it, please don't start.
-##
-##  The entire "transformation" part of Perky will be *removed*
-##  before 1.0.
-##
-##############################################################################
-##############################################################################
-
-constmap = {
-    'None': None,
-    'True': True,
-    'False': False,
-}
-
-@export
-def const(s):
-    return constmap[s]
-
-@export
-def nullable(type):
-    def fn(o):
-        if o == 'None':
-            return None
-        return type(o)
-    return fn
-
-
-class _AnnotateSchema:
-    def __init__(self):
-        self.reset()
-
-    def reset(self):
-        self.head = []
-        self.tail = []
-
-    def crawl(self, value, name=''):
-        if isinstance(value, dict):
-            self.head.append(name + "{")
-            self.tail.append('}')
-            d = value
-            for name, value in d.items():
-                self.crawl(value, name)
-            self.head.pop()
-            self.tail.pop()
-            return
-
-        if isinstance(value, list):
-            self.head.append(name + "[")
-            self.tail.append(']')
-            self.crawl(value[0])
-            self.head.pop()
-            self.tail.pop()
-            return
-
-        raise_if_false(
-            callable(value),
-            "Malformed schema error: " + repr(name) + " = " + repr(value) + ", value is not dict, list, or callable!",
-            None, None)
-        required = getattr(value, "_perky_required", None)
-        if required:
-            s = "".join(self.head) + name + "".join(reversed(self.tail))
-            required[0] = s
-            required[1] = False
-
-class UnspecifiedRequiredValues(Exception):
-    def __init__(self, breadcrumbs):
-        self.breadcrumbs = breadcrumbs
-
-    def __repr__(self):
-        breadcrumbs = " ".join(shlex.quote(s) for s in self.breadcrumbs)
-        return f"<UnspecifiedRequiredValues {breadcrumbs}>"
-
-    def __str__(self):
-        return repr(self)
-
-@export
-class Required:
-    def __init__(self):
-        self.markers = []
-
-    def annotate(self, schema):
-        annotator = _AnnotateSchema()
-        annotator.crawl(schema)
-
-    def __call__(self, fn):
-        marker = ['', False]
-        self.markers.append(marker)
-        def wrapper(o):
-            marker[1] = True
-            return fn(o)
-        wrapper._perky_required = marker
-        return wrapper
-
-    def verify(self):
-        failed = []
-        for breadcrumb, value in self.markers:
-            if not value:
-                failed.append(breadcrumb)
-        if failed:
-            failed.sort()
-            raise UnspecifiedRequiredValues(failed)
-

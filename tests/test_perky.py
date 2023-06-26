@@ -1,47 +1,34 @@
 #!/usr/bin/env python3
 
-
-
-def preload_local_perky():
-    """
-    Pre-load the local "perky" module, to preclude finding
-    an already-installed one on the path.
-    """
-    import pathlib
-    import sys
-
-    argv_0 = pathlib.Path(sys.argv[0])
-    perky_dir = argv_0.resolve().parent
-    while True:
-        perky_init = perky_dir / "perky" / "__init__.py"
-        if perky_init.is_file():
-            break
-        perky_dir = perky_dir.parent
-
-    # this almost certainly *is* a git checkout
-    # ... but that's not required, so don't assert it.
-    # assert (perky_dir / ".git" / "config").is_file()
-
-    if perky_dir not in sys.path:
-        sys.path.insert(1, str(perky_dir))
-
-    import perky
-    assert perky.__file__.startswith(str(perky_dir))
-    return perky_dir
+import perkytestlib
+perky_dir = perkytestlib.preload_local_perky()
 
 import os
+import pathlib
+import perky
+import tempfile
+import unittest
 
-perky_dir = preload_local_perky()
 os.chdir(perky_dir / "tests")
 
-import perky
-import unittest
+class pushd:
+    def __init__(self, path):
+        self.path = path
+
+    def __enter__(self):
+        self.old_path = os.getcwd()
+        os.chdir(self.path)
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        os.chdir(self.old_path)
 
 
 TEST_INPUT_TEXT = """
 
 a = b
 c = d
+# comment inside dict
+key with empty value =
 dict = {
     inner1=value1
       inner 2 = " value 2  "
@@ -49,6 +36,8 @@ dict = {
 
       a
         b
+      # comment inside list
+
 
     c
         ]
@@ -104,31 +93,55 @@ text = '''
 
 """
 
-
 TEST__PARSE_OUTPUT = {
-                'a': 'b', 'c': 'd', 'dict': {'inner1': 'value1', 'inner 2': ' value 2  ', 'list': ['a', 'b', 'c']},
+                'a': 'b', 'c': 'd', 'key with empty value': '',
+                'dict': {'inner1': 'value1', 'inner 2': ' value 2  ', 'list': ['a', 'b', 'c']},
                 'list': ['1', '2', '3'],
                 'text': 'hello\n\nthis is indented\n\netc.'
                }
 
 
-class TestParseMethods(unittest.TestCase):
+class TestParse(unittest.TestCase):
+    def test_parse_illegal_input(self):
+        with self.assertRaises(TypeError):
+            perky.loads(None)
+        with self.assertRaises(TypeError):
+            perky.loads(3)
 
-    def test_parse_type(self):
-        test = perky.loads(TEST_INPUT_TEXT)
-        self.assertEqual(type(test), dict)
+    def test_parse_invalid_root(self):
+        with self.assertRaises(TypeError):
+            perky.loads(TEST_INPUT_TEXT, root=3.14159)
 
     def test_parse(self):
         test = perky.loads(TEST_INPUT_TEXT)
         self.assertEqual(test, TEST__PARSE_OUTPUT)
 
-    def test_parse_no_input(self):
-        with self.assertRaises(AttributeError):
-            perky.loads(None)
+    def test_parse_values(self):
+        test = perky.loads(TEST_INPUT_TEXT)
+        self.assertEqual(type(test), dict)
+        self.assertEqual(test['a'], 'b')
+        self.assertEqual(test['c'], 'd')
+        self.assertEqual(test['key with empty value'], '')
+        self.assertEqual(test['list'], ['1', '2', '3'])
 
-    def test_parse_wrong_type_input(self):
-        with self.assertRaises(AttributeError):
-            perky.loads(3)
+        d = test['dict']
+        self.assertEqual(type(d), dict)
+        self.assertEqual(d['inner1'], 'value1')
+        self.assertEqual(d['inner 2'], ' value 2  ')
+        self.assertEqual(d['list'], ['a', 'b', 'c'])
+
+    def test_parse_quoted_tokens_ok(self):
+        key = 'a {} " "" """ # []'
+        value = 'b {} " "" """ # [] ='
+        result = perky.loads(f" '{key}' = '{value}' ")
+        self.assertIn(key, result)
+        self.assertEqual(result[key], value)
+
+        key = "a {} ' '' ''' # []"
+        value = "b {} ' '' ''' # [] ="
+        result = perky.loads(f' "{key}" = "{value}" ')
+        self.assertIn(key, result)
+        self.assertEqual(result[key], value)
 
     def test_parse_unterminated_quoted_string(self):
         with self.assertRaises(SyntaxError):
@@ -177,7 +190,7 @@ list = [
         self.assertEqual(d['list'], [ [], [], {}, {} ])
 
     def test_parse_trip_q_error(self):
-        with self.assertRaises(perky.PerkyFormatError):
+        with self.assertRaises(perky.FormatError):
             perky.loads(TEST_INPUT_TEXT_TRIPLE_Q_ERROR)
         try:
             perky.loads(TEST_INPUT_TEXT_TRIPLE_Q_ERROR)
@@ -191,8 +204,30 @@ list = [
             self.assertIn('hello', s)
             self.assertIn('hello', r)
 
-    def test_format_error(self):
-        pass
+    def test_undefined_pragma(self):
+        line = '=balloon'
+        try:
+            perky.loads(line)
+        except perky.FormatError as e:
+            self.assertEqual(None, e.tokens)
+            self.assertIn('unknown pragma', str(e).lower())
+            self.assertEqual(line, e.line)
+            return
+        if 1: # pragma: no cover
+            self.assertEqual(True, False, "exception not raised!")
+
+    def test_pragma_format_error(self):
+        bad_pragma = '[{=}]'
+        line = f'=pragma {bad_pragma}'
+        try:
+            perky.loads(line)
+        except perky.FormatError as e:
+            self.assertEqual(bad_pragma, e.tokens)
+            self.assertIn('invalid pragma argument', str(e).lower())
+            self.assertEqual(line, e.line)
+            return
+        if 1: # pragma: no cover
+            self.assertEqual(True, False, "exception not raised!")
 
     def test_parse_trip_repeated_key_error(self):
         # perky doesn't like it if you redefine the same key in a dict
@@ -234,17 +269,17 @@ list = [
             perky.transform(o, schema)
 
     def test_perky_include_list(self):
-        with perky.pushd("include_list"):
+        with pushd("include_list"):
             root = perky.load("main.pky", root=[], pragmas={'include':perky.pragma_include()})
         self.assertEqual(root, list("abcd"))
 
     def test_perky_include_dict(self):
-        with perky.pushd("include_dict"):
+        with pushd("include_dict"):
             root = perky.load("main.pky", pragmas={'include':perky.pragma_include()})
         self.assertEqual(root, dict(zip("abcd", "1234")))
 
     def test_perky_include_nested(self):
-        with perky.pushd("include_nested"):
+        with pushd("include_nested"):
             root = perky.load("main.pky", pragmas={'include':perky.pragma_include()})
         self.assertEqual(root,
             {
@@ -266,7 +301,7 @@ list = [
             )
 
     def test_perky_include_path(self):
-        with perky.pushd("include_path"):
+        with pushd("include_path"):
             root = perky.load("dir1/main.pky", pragmas={'include':perky.pragma_include( ['dir1', 'dir2'] )})
         self.assertEqual(root, dict(zip("abc", "345")))
 
@@ -289,8 +324,36 @@ list = [
             self.assertEqual(d1, d2)
             self.assertEqual(s1, s2)
 
+        d1 = perky.loads(TEST_INPUT_TEXT)
+        s1 = perky.dumps(d1)
+        d2 = perky.loads(s1)
+        s2 = perky.dumps(d2)
+        self.assertEqual(d1, d2)
+        self.assertEqual(s1, s2)
+
     def test_pushback_str_iterator(self):
+        i = perky.pushback_str_iterator("")
+        self.assertIn('<pushback i=', repr(i))
+        self.assertFalse(i)
+
+        i = perky.pushback_str_iterator("c")
+        self.assertIn('<pushback i=', repr(i))
+        i.push('d')
+        self.assertTrue(i)
+        d = next(i)
+        self.assertTrue(i)
+        c = next(i)
+        self.assertFalse(i)
+        with self.assertRaises(StopIteration):
+            e = next(i)
+        self.assertFalse(i)
+
+        self.assertEqual(c, 'c')
+        self.assertEqual(d, 'd')
+
         i = perky.pushback_str_iterator("abcde")
+        self.assertIn('<pushback i=', repr(i))
+        self.assertTrue(i)
         strings = []
         strings.append(next(i)) # a
         strings.append(next(i)) # b
@@ -327,8 +390,71 @@ list = [
             assert next(i) == 'c'
             assert not i
 
-def run_tests():
-    unittest.main()
 
-if __name__ == '__main__':
-    run_tests()
+class TestDump(unittest.TestCase):
+
+    # we already exercise most of dumps in the parse tests.
+    # this just gets us the last little bit of coverage.
+
+    def test_dump_with_fewest_quote_marks(self):
+        d = {
+            'a': 'a " " " "" """ ',
+            "b": "b ' ' ' '' ''' ",
+            }
+        s = perky.dumps(d)
+        d2 = perky.loads(s)
+        self.assertEqual(d, d2)
+
+    def test_dump_invalid_keys(self):
+        with self.assertRaises(TypeError):
+            perky.dumps({3: '14'})
+        with self.assertRaises(TypeError):
+            perky.dumps({b'3': 14})
+        with self.assertRaises(TypeError):
+            perky.dumps({b'3': 14})
+
+    def test_dump_invalid_values(self):
+        with self.assertRaises(TypeError):
+            perky.dumps({'a': b'14'})
+
+    def test_dump_non_str_values(self):
+        s = perky.dumps({'a': 22})
+        d = perky.loads(s)
+        self.assertEqual(d['a'], '22')
+
+    def test_dump_to_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = pathlib.Path(tmpdir)
+
+            d = perky.loads(TEST_INPUT_TEXT)
+            filename = tmpdir / "temp.pky"
+            perky.dump(filename, d)
+
+            d2 = perky.load(filename)
+            self.assertEqual(d, d2)
+
+
+class TestPragmaInclude(unittest.TestCase):
+    def test_include(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = pathlib.Path(tmpdir)
+            x = tmpdir / "x.pky"
+            with x.open('wt') as f:
+                f.write('# a comment!\n')
+                f.write('x = y\n')
+                f.write('# an empty line!\n\n')
+            s = "a = b\n=include 'x.pky'\nc = d"
+            d = perky.loads(s, pragmas={'include': perky.pragma_include(include_path=(str(tmpdir),))})
+            self.assertEqual(d['a'], 'b')
+            self.assertEqual(d['c'], 'd')
+            self.assertEqual(d['x'], 'y')
+
+    def test_non_existent_file(self):
+        s = "a = b\n=include 'non existent file.pky'\nc = d"
+
+        with self.assertRaises(FileNotFoundError):
+            d = perky.loads(s, pragmas={'include': perky.pragma_include()})
+
+
+if __name__ == '__main__': # pragma: no cover
+    unittest.main()

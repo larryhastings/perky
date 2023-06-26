@@ -1,56 +1,64 @@
 #!/usr/bin/env python3
 
+import perkytestlib
+perkytestlib.preload_local_perky()
 
-def preload_local_perky():
-    """
-    Pre-load the local "perky" module, to preclude finding
-    an already-installed one on the path.
-    """
-    import pathlib
-    import sys
-
-    argv_0 = pathlib.Path(sys.argv[0])
-    perky_dir = argv_0.resolve().parent
-    while True:
-        perky_init = perky_dir / "perky" / "__init__.py"
-        if perky_init.is_file():
-            break
-        perky_dir = perky_dir.parent
-
-    # this almost certainly *is* a git checkout
-    # ... but that's not required, so don't assert it.
-    # assert (perky_dir / ".git" / "config").is_file()
-
-    if perky_dir not in sys.path:
-        sys.path.insert(1, str(perky_dir))
-
-    import perky
-    assert perky.__file__.startswith(str(perky_dir))
-    return perky_dir
-
-import perky.utility
-
-
-
+import perky
 import unittest
 
-dict1 = {'a': 1, 'sub': {1: 2, 3:4, 5:6}}
-dict2 = {'b': 2, 'sub': {2: 3, 4:5, 6:7}}
-merged_sub = {a: a+1 for a in range(1, 7)}
 
 class TestUtility(unittest.TestCase):
 
-    def test_RecursiveChainMap(self):
-        rcm = perky.utility.RecursiveChainMap(dict1, dict2)
-        self.assertEqual(rcm['a'], 1)
-        self.assertEqual(rcm['b'], 2)
+    def test_merge_nothin(self):
+        o = perky.merge_dicts_and_lists()
+        self.assertIsNone(o)
 
-        sub = {n: v for n, v in rcm['sub'].items()}
-        self.assertEqual(sub, merged_sub)
+    def test_merge_one_dict(self):
+        dict1 = {'a': 1, 'b': 2}
+        d = perky.merge_dicts_and_lists(dict1)
 
-    def test_merge_dicts(self):
-        d = perky.utility.merge_dicts(dict1, dict2)
+        self.assertEqual(d, dict1)
+
+    def test_merge_one_list(self):
+        l = [1, 2, 'c', 4]
+        l2 = perky.merge_dicts_and_lists(l)
+
+        self.assertEqual(l, l2)
+
+    def test_merge_two_simple_dicts(self):
+        dict1 = {'a': 1, 'b': 2}
+        dict2 = {'c': 3}
+        d = perky.merge_dicts_and_lists(dict1, dict2)
+        manually_merged = dict(dict1)
+        manually_merged.update(dict2)
+        self.assertEqual(d, manually_merged)
+
+    def test_merge_two_nested_dicts(self):
+        dict1 = {'a': 1, 'sub': {1:2, 3:4, 5:6}}
+        dict2 = {'b': 2, 'sub': {2:3, 4:5, 6:7}}
+        d = perky.merge_dicts_and_lists(dict1, dict2)
+
         d2 = dict(dict1)
         d2.update(dict2)
-        d2['sub'] = merged_sub
+        d2['sub'] = {a: a+1 for a in range(1, 7)}
         self.assertEqual(d, d2)
+
+    def test_complex_merge_two_nested_dicts(self):
+        dict1 = {'a': 1, 'sub': {1:2, 3:4, 5:6}}
+        dict2 = {'b': 2, 'sub': {2:3, 4:5, 6:7}, 'l': [1, 2, 3]}
+        dict3 = {'c': 3}
+        dict4 = {'a': 5, 'd': 4, 'sub': {7:8, 8:9, 9:10}, 'l': [4, 5, 6]}
+        d = perky.merge_dicts_and_lists(dict1, dict2, dict3, dict4)
+
+        d2 = dict(dict1)
+        d2.update(dict2)
+        d2.update(dict3)
+        d2.update(dict4)
+        d2['sub'] = {a: a+1 for a in range(1, 10)}
+        d2['l'] = list(range(1, 7))
+        self.assertEqual(d, d2)
+
+
+if __name__ == '__main__': # pragma: nocover
+    unittest.main()
+

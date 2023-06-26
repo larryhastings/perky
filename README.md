@@ -11,7 +11,7 @@ Perky is a new, simple "rcfile" text file format for Python programs.
 It solves the same problem as "INI" files, "TOML" files, and "JSON"
 files, but with its own opinion about how to best solve the problem.
 
-Perky's goals:
+Perky's features:
 
 * Minimal, human-friendly syntax.  Perky files are easy to write by hand.
 * Explicit minimal data type support.  Rather than guess at the types
@@ -21,6 +21,8 @@ Perky's goals:
   1k lines of Python.  Fewer lines means fewer bugs!  (Hopefully!)
 * Flexible and extensible.  Perky permits extending the semantics of
   Perky files through a "pragma" mechanism.
+* Perky supports Python 3.6+, and its supported code passes its
+  unit test suite with 100% coverage.
 
 #### Perky syntax
 
@@ -39,18 +41,19 @@ line.  Container objects use one line per internal value.
 You may nest lists and dicts as deeply as memory permits.
 
 Unlike Python itself, leading whitespace is ignored.  You
-are free to use leading whitespace to show structure but
-this is optional.
+can use leading whitespace to show structure if you like,
+but it's optional.
 
 Blank lines and comment lines (lines starting with `#`)
-are ignored.
+are ignored, except inside triple-quoted strings.
 
-Perky also supports "pragmas", which are lines that start
-with an equals sign.  By default Perky doesn't define any
+Perky also supports "pragmas", lines that start
+with an equals sign that can perform special runtime
+behavior.  By default Perky doesn't define any
 pragmas--it's an extension mechanism for your use.
 
-Here's a sample Perky configuration file exercising all
-the things you can do in Perky:
+Here's a sample configuration file exercising all
+the things Perky can do:
 
     example name = value
     example dict = {
@@ -297,15 +300,16 @@ to the include path yourself.
 
 #### Deprecated API
 
-These functions are no longer maintained and will be
-removed before 1.0.
+These functions are no longer maintained or supported,
+and will be removed before 1.0.
 
 Why?  This part of Perky was always
 an experiment... and the experiment never really paid
-off.  There are better implementations of this idea,
-so you should just go use those instead.  (Or, if you're
-relying on this code in Perky, I encourage you to fork
-off a copy and maintain it yourself.)
+off.  There are better implementations of this idea--you
+you should use those instead.  (If you're relying on
+this code in Perky, I encourage you to fork
+off a copy and maintain it yourself.  But I doubt
+anybody is.)
 
 `perky.map(d, fn) -> o`
 
@@ -356,6 +360,35 @@ Experimental.
 
 ### Changelog
 
-**0.8**
+**0.8** *2023/06/25*
 
-* Perky now passes its tests with 100% coverage.
+* Perky now explicitly performs its `isinstance` checks using
+  `collections.abc.MutableMapping` and `collections.abc.MutableSequence`
+  instead of `dict` and `list`.  This permits you to use
+  your own mapping and sequence objects that *don't* inherit from
+  `dict` and `list`.
+* Renamed `PerkyFormatError` to `FormatError`.  The old name is
+  supported for now, but please transition to the new name.
+  The old name will be removed before 1.0.
+* The `transform` submodule is now deprecated and unsupported.
+  Please either stop using it or fork and maintain it yourself.
+* Perky now has a proper unit test suite, which it passes with 100%
+  coverage--except for the unsupported `transform` submodule.
+* While working towards 100% coverage, also cleaned up the code
+  a little in spots.
+
+  - Retooled `LineTokenizer`:
+
+    - Changed its name from `LineParser` is now `LineTokenizer`.
+      It never parsed anything, it just tokenized.
+    - Made its API a little more uniform: now, the
+      only function that will raise `StopIteration` is `__next__`.
+    - The other functions that used to maybe raise `StopIteration`
+      now return a tuple of `None` values when the iterator is empty.
+      This means you can safely write `for a, b, c in line_tokenizer:`.
+    - `bool(lt)` is now accurate; if it returns `True`,
+      you can call `next(lt)` or `lt.next_line()` or `lt.tokens()`
+      and be certain you'll get a value back.
+
+  - Replaced `RuntimeError` exceptions with more appropriate
+    exceptions (`ValueError`, `TypeError`).

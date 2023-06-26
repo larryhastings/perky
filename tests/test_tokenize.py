@@ -1,38 +1,14 @@
 #!/usr/bin/env python3
 
-
-def preload_local_perky():
-    """
-    Pre-load the local "perky" module, to preclude finding
-    an already-installed one on the path.
-    """
-    import pathlib
-    import sys
-
-    argv_0 = pathlib.Path(sys.argv[0])
-    perky_dir = argv_0.resolve().parent
-    while True:
-        perky_init = perky_dir / "perky" / "__init__.py"
-        if perky_init.is_file():
-            break
-        perky_dir = perky_dir.parent
-
-    # this almost certainly *is* a git checkout
-    # ... but that's not required, so don't assert it.
-    # assert (perky_dir / ".git" / "config").is_file()
-
-    if perky_dir not in sys.path:
-        sys.path.insert(1, str(perky_dir))
-
-    import perky
-    assert perky.__file__.startswith(str(perky_dir))
-    return perky_dir
-
-preload_local_perky()
+import perkytestlib
+perkytestlib.preload_local_perky()
 
 
 import perky
 import unittest
+
+class PerkyTestCase(unittest.TestCase):
+    maxDiff = None
 
 from perky.tokenize import WHITESPACE
 from perky.tokenize import STRING
@@ -50,13 +26,13 @@ from perky.tokenize import TRIPLE_DOUBLE_QUOTE
 from perky.tokenize import EMPTY_CURLY_BRACES
 from perky.tokenize import EMPTY_SQUARE_BRACKETS
 
-from perky.tokenize import token_to_name, tokenize
+from perky.tokenize import token_to_name, tokenize, LineTokenizer
 
 
 want_print = False
 
 
-class TestTokenizer(unittest.TestCase):
+class TestTokenizer(PerkyTestCase):
 
     def test_tokenizer(self):
 
@@ -75,28 +51,27 @@ class TestTokenizer(unittest.TestCase):
                 else:
                     values.append(t)
                     expect_token = True
-            if want_print:
+            if want_print: # pragma: nocover
                 if suppress_whitespace is None:
                     suffix = ""
                 else:
                     modifier = "suppressing" if suppress_whitespace else "keeping"
                     suffix = f", {modifier} whitespace tokens"
-                if want_print:
-                    print(f"test #{test_number}{suffix}:\n  input:\n\t", repr(s), "\n  should match:\n\t", " ".join(x if x in token_to_name else repr(x) for x in tokens_and_values), end="\n\n")
+                print(f"test #{test_number}{suffix}:\n  input:\n\t", repr(s), "\n  should match:\n\t", " ".join(x if x in token_to_name else repr(x) for x in tokens_and_values), end="\n\n")
                 test_number += 1
             for tok, s in tokenize(s, suppress_whitespace=suppress_whitespace):
                 t = tokens.pop(0)
-                if want_print:
+                if want_print: # pragma: nocover
                     print("  [want]", t, end="")
                 if tok in tokens_with_values:
                     v = values.pop(0)
-                    if want_print:
+                    if want_print: # pragma: nocover
                         print(f" {s!r}")
                 else:
-                    if want_print:
+                    if want_print: # pragma: nocover
                         print()
                     v = None
-                if want_print:
+                if want_print: # pragma: nocover
                     print("  [ got]", tok, repr(s))
                 self.assertEqual(tok, t, "token doesn't match, expected " + str(token_to_name[t]) + " got " + str(token_to_name.get(tok)))
                 if v is not None:
@@ -168,10 +143,65 @@ class TestTokenizer(unittest.TestCase):
             WHITESPACE,
             )
 
+    def test_invalid_string(self):
+        s = '''
+        x = """
+          abc
+          """ what's this?
+        '''
+        tokens = []
+        with self.assertRaises(ValueError):
+            for t in tokenize(s):
+                tokens.append(t)
+        self.assertEqual(tokens, [(STRING, 'x'), (EQUALS, '=')])
 
-def run_tests():
+
+class TestLineTokenizer(PerkyTestCase):
+    def test_empty_line_tokenizer(self):
+        lt = LineTokenizer('')
+        self.assertTrue(lt)
+        line_number, line = lt.next_line()
+        self.assertEqual(line, '')
+
+        line_number, line = lt.next_line()
+        self.assertFalse(lt)
+        self.assertEqual(lt.tokens(), (None, None, None))
+
+        for t in lt: # pragma: no cover
+            self.assertTrue(False)
+        else:
+            self.assertTrue(True)
+
+
+    def test_line_tokenizer(self):
+        expected_results = [
+            (1, 'a=1', [(STRING, 'a'), (EQUALS, '='), (STRING, '1')]),
+            (2, 'b=2', [(STRING, 'b'), (EQUALS, '='), (STRING, '2')]),
+            ]
+
+        input_lines = "\n".join(t[1] for t in expected_results)
+        lt = LineTokenizer(input_lines)
+        self.assertIn('<LineTokenizer 0/2 lines [', repr(lt))
+        self.assertTrue(lt)
+        for expected in expected_results:
+            self.assertTrue(lt)
+            got = lt.tokens()
+            line_number = expected[0]
+            self.assertIn(f'<LineTokenizer {line_number}/2 lines [', repr(lt))
+            self.assertEqual(expected, got)
+
+        self.assertFalse(lt)
+        self.assertIn('<LineTokenizer 2/2 lines [', repr(lt))
+        got = lt.next_line()
+        self.assertEqual(got, (None, None))
+
+        self.assertFalse(lt)
+        self.assertIn('<LineTokenizer 2/2 lines [', repr(lt))
+        got = lt.next_line()
+        self.assertEqual(got, (None, None))
+
+        self.assertFalse(lt)
+
+
+if __name__ == '__main__': # pragma: nocover
     unittest.main()
-
-if __name__ == '__main__':
-    run_tests()
-

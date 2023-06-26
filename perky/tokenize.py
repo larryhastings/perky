@@ -78,10 +78,13 @@ for value in c_to_tokens.values():
 
 class pushback_str_iterator:
     """
-    An iterator for strings that allows you to
-    add new data during processing.  While iterating
-    over a string, you can "push" new strings onto the
-    iterator, which will be
+    A specialized iterator for strings that permits a
+    form of rewinding: while iterating over a string,
+    you can "push" strings back onto the iterator,
+    which will be yielded first.  (The pushed-back
+    strings go on a stack, and are LIFO.)  Technically
+    you can "push" any string, though in practice Perky
+    only pushes back values yielded by the iterator.
     """
 
     # look! a go-faster stripe!
@@ -128,7 +131,7 @@ class pushback_str_iterator:
         its input.  Calling push_c with something besides a length-1 string
         will result in it yielding garbage.  But pushback_str_iterator
         is an internal data structure, unsupported for public use, and
-        Perky is careful.  So, it's fine.
+        Perky is careful.  So it's fine.
         """
         # assert isinstance(c, str) and (len(c) == 1), f"expected str of len 1, got c={c} (type(c)={type(c)})"
         self.stack.append(c)
@@ -174,7 +177,11 @@ class pushback_str_iterator:
             s = ""
 
         if self.i:
-            s += "".join(self.i)
+            t = "".join(self.i)
+            if s:
+                s += t
+            else:
+                s = t
             self.i = None
 
         return s
@@ -294,7 +301,7 @@ def tokenize(s, suppress_whitespace=True):
                 # triple quote MUST be last thing on line (except possibly-ignored trailing whitespace)
                 trailing = i.drain()
                 if trailing and not trailing.isspace():
-                    raise RuntimeError("tokenizer: found triple-quote followed by non-whitespace string " + repr(trailing))
+                    raise ValueError("tokenizer found triple-quote followed by non-whitespace string " + repr(trailing))
                 yield t
                 # don't yield trailing whitespace here--we never do anywhere else!
                 # if trailing and not suppress_whitespace:
@@ -325,40 +332,101 @@ def tokenize(s, suppress_whitespace=True):
         yield STRING, s
 
 
-class LineParser:
+class LineTokenizer:
+    """
+    A simple tokenizing iterator for Perky.
+    It's line-oriented; you can get the next
+    line either as a string, or as a sequence
+    of tokens.
+    """
 
     def __init__(self, s, suppress_whitespace=True):
-        self._lines = s.split("\n")
-        self.lines = enumerate(self._lines, 1)
+        lines = s.split("\n")
+        self._lines = enumerate(lines, 1)
         self.suppress_whitespace = suppress_whitespace
+        self.waiting = None
+        self.line_number = 0
+
+        repr_lines = str(lines[:5])
+        if len(repr_lines) > 50:
+            repr_lines = repr_lines[:47] + "..."
+        self._repr = f"<LineTokenizer {{self.line_number}}/{len(lines)} lines {repr_lines}>"
 
     def __repr__(self):
-        return f"<LineParser {self._lines}>"
+        return self._repr.format(self=self)
 
     def __iter__(self):
         return self
 
     def __bool__(self):
-        return bool(self.lines)
+        if self.waiting is not None:
+            return True
+        if self._lines is None:
+            return False
+
+        try:
+            self.waiting = next(self._lines)
+            return True
+        except StopIteration:
+            self._lines = self.waiting = None
+            return False
 
     def next_line(self):
-        line_number, line = next(self.lines)
-        self.line_number = line_number
-        return line
+        """
+        Returns the 2-tuple
+            line_number, line
+
+        If the iterator is exhausted,
+        does *not* raise StopIteration.
+        Instead, it returns (None, None).
+        """
+        failure = (None, None)
+
+        if self.waiting is not None:
+            t = self.waiting
+            self.waiting = None
+        else:
+            if self._lines is None:
+                return failure
+            try:
+                t = next(self._lines)
+            except StopIteration as e:
+                self._lines = None
+                return failure
+
+        self.line_number = t[0]
+        return t
 
     def tokens(self):
-        while self.lines:
-            line = self.line = self.next_line()
-            l = list(tokenize(line, suppress_whitespace=self.suppress_whitespace))
-            if l:
-                return l, line
-            if l is None:
-                return None
-        return None
+        """
+        Returns the 3-tuple
+            line_number, line, tokens
+
+        If the iterator is exhausted,
+        does *not* raise StopIteration.
+        Instead, it returns (None, None, None).
+        """
+        failure = (None, None, None)
+
+        if self.waiting is not None:
+            t = self.waiting
+            self.waiting = None
+        else:
+            if self._lines is None:
+                return failure
+            try:
+                t = next(self._lines)
+            except StopIteration as e:
+                self._lines = None
+                return failure
+
+        line_number, line = t
+        self.line_number = line_number
+        tokens = list(tokenize(line, suppress_whitespace=self.suppress_whitespace))
+        return (line_number, line, tokens)
 
     def __next__(self):
-        while True:
-            t = self.tokens()
-            if t is None:
-                raise StopIteration()
-            return t
+        t = self.tokens()
+        if t == (None, None, None):
+            raise StopIteration()
+        return t
