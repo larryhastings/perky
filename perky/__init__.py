@@ -123,7 +123,7 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 
-__version__ = "0.8"
+__version__ = "0.8.1"
 
 import ast
 from collections.abc import MutableMapping, MutableSequence, Sequence
@@ -394,7 +394,7 @@ class Serializer:
             raise TypeError("Perky can't serialize bytes values, please decode to str")
 
         if not isinstance(value, str):
-            value = repr(value)
+            value = str(value)
         if '\n' in value:
             return self.serialize_textblock(value)
         if value == value.strip() and "".join(value.split()).isalnum():

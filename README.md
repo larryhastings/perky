@@ -368,6 +368,12 @@ Experimental.
 
 ### Changelog
 
+**0.8.1** *2023/06/26*
+
+* Whoops!  A major regression: I inadveretently changed the default
+  conversion of non-string values from `str` to `repr`.  Bad move!
+  `str` is much better.  Added a test so I don't do this again.
+
 **0.8** *2023/06/25*
 
 * Perky now explicitly performs its `isinstance` checks using

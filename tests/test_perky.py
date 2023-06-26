@@ -3,6 +3,7 @@
 import perkytestlib
 perky_dir = perkytestlib.preload_local_perky()
 
+import datetime
 import os
 import pathlib
 import perky
@@ -421,6 +422,11 @@ class TestDump(unittest.TestCase):
         s = perky.dumps({'a': 22})
         d = perky.loads(s)
         self.assertEqual(d['a'], '22')
+
+        s = perky.dumps({'a': datetime.date(2022, 6, 15)})
+        d = perky.loads(s)
+        self.assertEqual(d['a'], '2022-06-15')
+
 
     def test_dump_to_file(self):
         with tempfile.TemporaryDirectory() as tmpdir:
