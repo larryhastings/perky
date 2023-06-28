@@ -430,12 +430,13 @@ def dump(filename, d, *, encoding="utf-8"):
 
 
 @export
-def pragma_include(include_path=(".",)):
+def pragma_include(include_path=(".",), *, encoding=None):
     assert isinstance(include_path, Sequence)
     assert not isinstance(include_path, str)
     assert all(isinstance(s, str) for s in include_path)
     include_path = tuple(include_path)
     def pragma_include(parser, filename):
+        encoding = encoding or parser.encoding
         leaf = parser.breadcrumbs[-1]
         leaf_is_list = isinstance(parser.breadcrumbs[-1], list)
         subroot = [] if leaf_is_list else {}
@@ -445,7 +446,7 @@ def pragma_include(include_path=(".",)):
                 break
         else:
             raise FileNotFoundError(filename)
-        load(path, pragmas=parser.pragmas, encoding=parser.encoding, root=subroot)
+        load(path, pragmas=parser.pragmas, encoding=encoding, root=subroot)
         merged = merge_dicts_and_lists(leaf, subroot)
         # print(f"\n\nXXX merge_dicts_and_lists({leaf=}, {subroot=}) -> {merged=}\n\n")
         leaf.clear()

@@ -225,7 +225,10 @@ it should be a container
 
 If `root` is `None`, returns a new dict.
 
-`def loads(s, *, pragmas=None, encoding='utf-8', root=None) -> o`
+The `encoding` parameter is not used by `loads` itself,
+but it's available for pragmas
+
+`def load(s, *, pragmas=None, encoding='utf-8', root=None) -> o`
 
 Parses a file containing Perky-file-format settings.
 Returns a dict.
@@ -367,6 +370,12 @@ Experimental.
 * Backslash quoting currently does "whatever your version of Python does".  Perhaps this should be explicit, and parsed by Perky itself?
 
 ### Changelog
+
+**0.8.2** *under development*
+
+* You can now pass an `encoding` keyword argument
+  into `pragma_include`.  This overrides the default,
+  which is the encoding passed in to `load` / `loads`.
 
 **0.8.1** *2023/06/26*
 
