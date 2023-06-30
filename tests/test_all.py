@@ -20,9 +20,9 @@ def run_tests():
 
     print()
     if successes == modules:
-        print("Unit tests passed.")
+        print("OK")
     else: # pragma: nocover
-        print("Unit tests failed.")
+        print(f"FAILED (failed modules={modules - successes})")
 
 if __name__ == '__main__':
     run_tests()

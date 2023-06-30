@@ -123,7 +123,7 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 
-__version__ = "0.8.1"
+__version__ = "0.8.2"
 
 import ast
 from collections.abc import MutableMapping, MutableSequence, Sequence
@@ -149,12 +149,11 @@ def export(fn):
 
 class Parser:
 
-    def __init__(self, s, *, pragmas=None, encoding='utf-8', root=None):
+    def __init__(self, s, *, pragmas=None, root=None):
         if not isinstance(s, str):
             raise TypeError('s must be str, not {type(s)}')
         self.lt = LineTokenizer(s)
         self.pragmas = pragmas or {}
-        self.encoding = encoding
         self.root = root if root is not None else {}
         self.breadcrumbs = []
 
@@ -404,8 +403,8 @@ class Serializer:
 
 
 @export
-def loads(s, *, pragmas=None, encoding='utf-8', root=None):
-    p = Parser(s, pragmas=pragmas, encoding=encoding, root=root)
+def loads(s, *, pragmas=None, root=None):
+    p = Parser(s, pragmas=pragmas, root=root)
     d = p.parse()
     return d
 
@@ -419,7 +418,7 @@ def dumps(d):
 @export
 def load(filename, *, pragmas=None, encoding="utf-8", root=None):
     with open(filename, "rt", encoding=encoding) as f:
-        return loads(f.read(), pragmas=pragmas, encoding=encoding, root=root)
+        return loads(f.read(), pragmas=pragmas, root=root)
 
 @export
 def dump(filename, d, *, encoding="utf-8"):
@@ -430,13 +429,12 @@ def dump(filename, d, *, encoding="utf-8"):
 
 
 @export
-def pragma_include(include_path=(".",), *, encoding=None):
+def pragma_include(include_path=(".",), *, encoding='utf-8'):
     assert isinstance(include_path, Sequence)
     assert not isinstance(include_path, str)
     assert all(isinstance(s, str) for s in include_path)
     include_path = tuple(include_path)
     def pragma_include(parser, filename):
-        encoding = encoding or parser.encoding
         leaf = parser.breadcrumbs[-1]
         leaf_is_list = isinstance(parser.breadcrumbs[-1], list)
         subroot = [] if leaf_is_list else {}
