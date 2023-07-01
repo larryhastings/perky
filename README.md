@@ -384,7 +384,7 @@ Experimental.
 
 ### Changelog
 
-**0.8.2** *under development*
+**0.8.2** *2023/06/30*
 
 * Minor API changes:
 
