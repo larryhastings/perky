@@ -409,16 +409,16 @@ def loads(s, *, pragmas=None, root=None):
     return d
 
 @export
+def load(filename, *, encoding="utf-8", pragmas=None, root=None):
+    with open(filename, "rt", encoding=encoding) as f:
+        return loads(f.read(), pragmas=pragmas, root=root)
+
+@export
 def dumps(d):
     s = Serializer()
     s.serialize(d)
     return s.dumps()
 
-
-@export
-def load(filename, *, pragmas=None, encoding="utf-8", root=None):
-    with open(filename, "rt", encoding=encoding) as f:
-        return loads(f.read(), pragmas=pragmas, root=root)
 
 @export
 def dump(filename, d, *, encoding="utf-8"):
