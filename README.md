@@ -21,8 +21,8 @@ Perky's features:
   1k lines of Python.  Fewer lines means fewer bugs!  (Hopefully!)
 * Flexible and extensible.  Perky permits extending the semantics of
   Perky files through a "pragma" mechanism.
-* Perky supports Python 3.6+, and its supported code passes its
-  unit test suite with 100% coverage.
+* Perky supports Python 3.6+, and passes its unit test suite with
+  100% coverage (excluding the deprecated portions).
 
 #### Perky syntax
 
@@ -32,8 +32,8 @@ types:
 
 * strings, including quoted strings and
   "triple-quoted strings" (multi-line strings),
-* "lists" (arrays),
-* and "dicts" (associative arrays).
+* "mappings" (dicts), and
+* "sequences" (lists).
 
 Perky is line-oriented; individual values go on a single
 line.  Container objects use one line per internal value.
@@ -131,13 +131,13 @@ you want, and back again.
 
 Note that Perky doesn't care how or if you transform your
 data.  You can use the strings as-is or transform them
-however you like.  You can transform them by hand
+however you like.  You can transform them by hand,
 or with a third-party data transformation library like
 [Marshmallow.](https://marshmallow.readthedocs.io/)
 
-(Perky used to support an experimental API for transforming
-data yourself.  But this was never fully fleshed-out, and
-there are better versions of that technology out there.
+(Perky used to support an experimental API for automated
+data transformation.  But this was never fully fleshed-out,
+and there are better versions of that technology out there.
 I've deprecated the "transformation" submodule and will
 remove it before 1.0.)
 
@@ -215,22 +215,32 @@ There are only a few errors possible when parsing a Perky text:
 
 ### API
 
-`def loads(s, *, pragmas=None, encoding='utf-8', root=None) -> o`
+#### `def loads(s, *, pragmas=None, root=None) -> o`
 
 Parses a Perky-format string, and returns a container filled
 with the values parsed from that string.
 
-If `root` is not `None`,
-it should be a container
+If `root` is `None`, `loads` behaves as if you passed in an
+empty `dict`.
 
-If `root` is `None`, returns a new dict.
+If `root` is not `None`, it should be a container, either
+a mutable mapping (`dict`) or a mutable sequence (`list`).
+This affects how the data is parsed; if `root` is a
+mutable mapping, the top level of the Perky file must be
+a "mapping context" (a series of `name=value` lines);
+if `root` is a mutable sequence, the top level of the Perky
+file is assumed to be a "sequence context"
+(a series of `value` lines).
 
-`def loads(s, *, pragmas=None, encoding='utf-8', root=None) -> o`
+#### `def load(s, *, pragmas=None, encoding='utf-8', root=None) -> o`
 
 Parses a file containing Perky-file-format settings.
 Returns a dict.
 
-`perky.dumps(d) -> s`
+`encoding` specifies the encoding used to decode the
+data read from the file.
+
+#### `perky.dumps(d) -> s`
 
 Converts a dictionary to a Perky-file-format string.
 Keys in the dictionary must all be strings.  Values
@@ -238,12 +248,15 @@ that are not dicts, lists, or strings will be converted
 to strings using str.
 Returns a string.
 
-`perky.dump(filename, d, *, pragmas=None, encoding="utf-8")`
+#### `perky.dump(filename, d, *, pragmas=None, encoding="utf-8")`
 
 Converts a dictionary to a Perky-file-format string
 using `perky.dump`, then writes it to *filename*.
 
-`perky.pragma_include(include_path=(".",))`
+`encoding` specifies the encoding used to encode the
+data written to the file.
+
+#### `perky.pragma_include(include_path=(".",), *, encoding='utf-8')`
 
 This function generates a pragma handler that adds "include"
 functionality.  "Including" means lexically inserting one Perky
@@ -276,13 +289,16 @@ include from different paths, e.g.:
         'config': perky.pragma_include(config_dirs),
     }
 
+`encoding` specifies the encoding used to decode the
+data read in from the included files.
+
 Notes:
 
 * The pragma handler is context-sensitive; the included
 file will be included as if it was copied-and-pasted replacing
 the pragma line.  Among other things, this means that if the pragma
-is invoked inside a list context, the included file must *start*
-in a list context.
+is invoked inside a sequence context, the included file must *start*
+in a sequence context.
 
 * When loading the file, the pragma handler will pass in the
 current pragma handlers into `perky.load()`.  Among other things,
@@ -300,8 +316,8 @@ to the include path yourself.
 
 #### Deprecated API
 
-Perky currently has a "transformation" submodule.
-The idea is, you'd load a Perky file,
+Perky has a "transformation" submodule.
+The idea is, you load a Perky file,
 then run `perky.transform` on that dictionary to
 convert the strings into native values.
 
@@ -323,9 +339,9 @@ now-deprecated API.
 
 Iterates over a dictionary.  Returns a new dictionary where,
 for every *value*:
-  * if it is a dict, replace with a new dict.
-  * if it is a list, replace with a new list.
-  * if it is neither a dict nor a list, replace with
+  * if it's a dict, replace with a new dict.
+  * if it's a list, replace with a new list.
+  * if it's neither a dict nor a list, replace with
     `fn(value)`.
 
 The function passed in is called a *conversion function*.
@@ -367,6 +383,21 @@ Experimental.
 * Backslash quoting currently does "whatever your version of Python does".  Perhaps this should be explicit, and parsed by Perky itself?
 
 ### Changelog
+
+**0.8.2** *2023/06/30*
+
+* Minor API changes:
+
+  - You can now pass an `encoding` keyword argument
+    into `pragma_include`.  This is now the only way
+    to specify the encoding used to decode files
+    loaded from disk by `pragma_include`.
+  - Removed the (undocumented) `encoding` attribute
+    of the `perky.Parser` object.
+  - Removed the `encoding` parameter for `loads`.
+  - The `encoding` parameter for `load` is now only
+    used by `load` itself when loading the top-level
+    Perky file.
 
 **0.8.1** *2023/06/26*
 
