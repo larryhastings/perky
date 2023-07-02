@@ -43,5 +43,31 @@ class TestTransform(unittest.TestCase):
         d2['sub'] = merged_sub
         self.assertEqual(d, d2)
 
+    def test_transform_dict(self):
+        o = {'a': '3', 'b': '5.0', 'c': ['1', '2', 'None', '3'], 'd': {'e': 'f', 'g': 'True'}}
+        schema = {'a': int, 'b': float, 'c': [perky.nullable(int)], 'd': {'e': str, 'g': perky.const}}
+        test_func = perky.transform(o, schema)
+        expected_dict = {'a': 3, 'b': 5.0, 'c': [1, 2, None, 3], 'd': {'e': 'f', 'g': True}}
+        self.assertEqual(expected_dict, test_func)
+
+    def test_transform_type_mismatch(self):
+        o = {'a': '3', 'b': '5.0', 'c': ['1', '2', 'None', '3'], 'd': {'e': 'f', 'g': 'True'}}
+        schema = [{'a': int, 'b': float, 'c': [perky.nullable(int)], 'd': {'e': str, 'g': perky.const}}]
+        with self.assertRaises(perky.PerkyFormatError):
+            perky.transform(o, schema)
+
+    def test_transform_bad_obj(self):
+        o2 = {'a': '44'}
+        schema = [{'a': int, 'b': float, 'c': [perky.nullable(int)], 'd': {'e': str, 'g': perky.const}}]
+        with self.assertRaises(perky.PerkyFormatError):
+            perky.transform(o2, schema)
+
+    def test_transform_none(self):
+        o = None
+        schema = {'a': int, 'b': float, 'c': [perky.nullable(int)], 'd': {'e': str, 'g': perky.const}}
+        with self.assertRaises(perky.PerkyFormatError):
+            perky.transform(o, schema)
+
+
 if __name__ == '__main__': # pragma: nocover
     unittest.main()

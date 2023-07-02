@@ -10,25 +10,22 @@ import collections
 import sys
 
 
-token_first_characters = set()
 c_to_tokens = collections.defaultdict(list)
-s_to_token = {}
 tokens = {}
-token_to_name = {}
+# token_to_name = {}
 
 
 def token(s, description):
-    base = description.strip().lower().replace(" ", "_")
+    base = description.replace(" ", "_")
     token = "<" + base + "_token>"
     name = base.upper()
 
     tokens[token] = (name, s)
-    token_to_name[token] = name
+    # token_to_name[token] = name
 
     if s:
         value = (token, s)
         c_to_tokens[s[0]].append(value)
-        s_to_token[s] = value
 
     return token
 
@@ -50,31 +47,26 @@ TRIPLE_DOUBLE_QUOTE   = token('"""', 'triple double quote')
 EMPTY_CURLY_BRACES    = token('{}', 'empty curly braces')
 EMPTY_SQUARE_BRACKETS = token('[]', 'empty square brackets')
 
-single_quote_tokens = set((SINGLE_QUOTE, DOUBLE_QUOTE))
-triple_quote_tokens = set((TRIPLE_SINGLE_QUOTE, TRIPLE_DOUBLE_QUOTE))
-left_bracket_tokens = set((LEFT_SQUARE_BRACKET, LEFT_CURLY_BRACE))
-left_bracket_to_right_bracket = {
-    '[': ']',
-    '{': '}',
-}
-left_bracket_to_empty_bracket_token = {
-    '[': (EMPTY_SQUARE_BRACKETS, '[]'),
-    '{': (EMPTY_CURLY_BRACES, '{}'),
-}
-
 non_quoting_operators = set(c for c in c_to_tokens if c not in ('"', "'"))
+# non_quoting_operators = "".join(c for c in c_to_tokens if c not in ('"', "'"))
 
-# sort tokens in c_to_tokens by length, longest first
+# c_to_tokens maps characters to lists of tokens that start with that charcter.
+# It's always true that there are either exactly zero, one, or two tokens that
+# start with any particular character.  If there are two, it's always true that
+# the two tokens are different lengths, and the shorter token is exactly one
+# character long.
+#
+# Sort the list of tokens by length, longest first, and also verify these
+# invariants.
 for value in c_to_tokens.values():
-    value.sort(key=lambda o:len(o[0]), reverse=True)
-    # the parsing code is special-cased to assume:
-    #   * there are either one or two possible tokens for each initial character
-    #   * if there are two, the first token is always multiple characters
-    #     and the second token is always a single character
-    assert 1 <= len(value) <= 2
+    length = len(value)
+    assert 1 <= length <= 2
     if len(value) == 2:
-        assert len(value[0][1]) > 1, f"unexpected value {value}"
-        assert len(value[1][1]) == 1, f"unexpected value {value}"
+        value.sort(key=lambda o:len(o[0]), reverse=True)
+        assert len(value[0][1]) > 1, f"unexpected value {value}, should be a token of 2 or more characters"
+        assert len(value[1][1]) == 1, f"unexpected value {value}, should be a token that is a single character"
+
+_sentinel = object()
 
 class pushback_str_iterator:
     """
@@ -88,13 +80,31 @@ class pushback_str_iterator:
     """
 
     # look! a go-faster stripe!
-    __slots__ = ('i', 'stack')
+    __slots__ = ('i', 'stack', 'push_c')
 
     def __init__(self, s):
         # iterate over s
         self.i = iter(s)
+
         # but maintain a stack for pushbacks
         self.stack = []
+
+        # Optimized version of push that only handles strings of length 1.
+        # Most of the time, Perky pushes individual characters, and push_c
+        # is much faster than push.  This optimization brings a measurable
+        # performance gain.  (Between this and switching to slots, I saw a
+        # 22% *overall* improvement in Perky!)
+        #
+        # This method would be unsafe for public use; it doesn't validate
+        # its input.  Calling push_c with something besides a length-1 string
+        # will result in it yielding garbage.  But pushback_str_iterator
+        # is an internal data structure, unsupported for public use, and
+        # Perky is careful.  So it's fine.
+        self.push_c = self.stack.append
+
+    def reset(self, s):
+        self.i = iter(s)
+        self.stack.clear()
 
     def __repr__(self):
         return f'<pushback i={self.i} stack={list(self.stack)}>'
@@ -113,38 +123,20 @@ class pushback_str_iterator:
         prints 'X', 'a', 'b', 'c', 'd', 'e', and 'Y'
         in that order.
         """
-        # assert isinstance(s, (str, list)), f"expected str or list, got s={s} (type(s)={type(s)})"
         if len(s) == 1:
-            self.stack.append(s[0])
+            self.push_c(s[0])
             return
         self.stack.extend(reversed(s))
 
-    def push_c(self, c):
-        """
-        Optimized version of push that only handles strings of length 1.
-        Most of the time, Perky pushes individual characters, and push_c
-        is much faster than push.  This optimization brings a measurable
-        performance gain.  (Between this and switching to slots, I saw a
-        22% *overall* improvement in Perky!)
-
-        This method would be unsafe for public use; it doesn't validate
-        its input.  Calling push_c with something besides a length-1 string
-        will result in it yielding garbage.  But pushback_str_iterator
-        is an internal data structure, unsupported for public use, and
-        Perky is careful.  So it's fine.
-        """
-        # assert isinstance(c, str) and (len(c) == 1), f"expected str of len 1, got c={c} (type(c)={type(c)})"
-        self.stack.append(c)
-
     def __next__(self):
         if self.stack:
-            x = self.stack.pop()
-            return x
+            s = self.stack.pop()
+            return s
         if not self.i:
             raise StopIteration
         try:
-            x = next(self.i)
-            return x
+            s = next(self.i)
+            return s
         except StopIteration as e:
             self.i = None
             raise e
@@ -158,13 +150,12 @@ class pushback_str_iterator:
         if not self.i:
             return False
 
-        try:
-            c = next(self.i)
-            self.push_c(c)
-            return True
-        except StopIteration:
+        c = next(self.i, _sentinel)
+        if c is _sentinel:
             self.i = None
             return False
+        self.push_c(c)
+        return True
 
     def drain(self):
         """
@@ -187,149 +178,160 @@ class pushback_str_iterator:
         return s
 
 
-def tokenize(s, suppress_whitespace=True):
+def tokenize(i, suppress_whitespace=True):
     """
     Tokenizer for individual lines of a Perky file.
     Hand-written, designed specifically for Perky syntax.
 
+    i should be a pushback_str_iterator iterating over the
+    string you want tokenized.
+
     This function is a generator; it yields tokens from
     the line until the line is exhausted.
 
-    If suppres_whitespace is true (the default),
+    If suppress_whitespace is true (the default),
     this generator will not yield WHITESPACE tokens.
     (Trailing whitespace is generally discarded anyway.)
     """
 
-    # assert "\n" not in s
+    # cache looked-up methods in fast locals
+    i_push = i.push
+    i_push_c = i.push_c
 
-    i = pushback_str_iterator(s)
+    buffer = []
+    buffer_append = buffer.append
+    buffer_clear = buffer.clear
 
-    def parse_unquoted_string():
-        """
-        Parse an unquoted string.
-        Note that it *is* permitted to have spaces.
-
-        Returns the unquoted string.
-        If there were no characters to be read, returns an
-        empty string.
-        Note that trailing whitespace is stripped.
-        (If you want trailing whitespace preserved,
-        use a quoted string.)
-
-        Stops the unquoted string at EOL, or the first
-        character used in Perky syntax (=, {, [, etc).
-        (If you need to use one of those inside your string,
-        use a quoted string.)
-
-        """
-        buffer = []
-        for c in i:
-            if c in non_quoting_operators:
-                i.push_c(c)
-                break
-            buffer.append(c)
-        return "".join(buffer).rstrip()
-
-    def parse_quoted_string(quote):
-        """
-        Parse a quoted string.  The ending quote
-        must match the starting quote character
-        passed in.  Handles all the Python escape
-        sequences: all the single-character ones,
-        octal, and the extra-special x u U N ones.
-        """
-        buffer = [quote]
-        backslash = False
-        for c in i:
-            if c == '\\':
-                backslash = not backslash
-                continue
-            if (c == quote) and (not backslash):
-                buffer.append(quote)
-                break
-            if backslash:
-                buffer.append('\\')
-            buffer.append(c)
-            backslash = False
-
-        return ast.literal_eval("".join(buffer))
+    empty_string_join = "".join
 
     for c in i:
         if c.isspace():
-            whitespace = [c]
+            if buffer:
+                buffer_clear()
+            buffer_append(c)
             for c in i:
                 if not c.isspace():
-                    i.push_c(c)
+                    i_push_c(c)
                     break
-                whitespace.append(c)
+                buffer_append(c)
             if not suppress_whitespace:
-                yield WHITESPACE, "".join(whitespace)
+                yield (WHITESPACE, empty_string_join(buffer))
             continue
 
-        t = c_to_tokens.get(c, None)
-        if t:
-            if len(t) > 1:
-                multi, single = t
+        candidates = c_to_tokens.get(c, None)
+        if candidates:
+            if len(candidates) == 1:
+                t = candidates[0]
+            else:
+                multi, single = candidates
                 multi_string = multi[1]
-                token = [c]
+                if buffer:
+                    buffer_clear()
+                buffer_append(c)
                 for c in i:
-                    token.append(c)
-                    if len(token) == len(multi_string):
+                    buffer_append(c)
+                    if len(buffer) == len(multi_string):
                         break
-                token = "".join(token)
+                token = empty_string_join(buffer)
                 if token == multi_string:
                     t = multi
                 else:
                     t = single
-                    i.push(token)
+                    i_push(token)
                     # now throw away c, we just pushed it again
                     c = next(i)
-            else:
-                t = t[0]
 
             token, s = t
 
-            if token == NUMBER_SIGN:
-                yield COMMENT, i.drain()
+            if token is NUMBER_SIGN:
+                yield (COMMENT, i.drain())
                 return
 
-            if token in single_quote_tokens:
-                yield STRING, parse_quoted_string(c)
+            if (token is SINGLE_QUOTE) or (token is DOUBLE_QUOTE):
+                # Parse a quoted string.  The ending quote
+                # must match the starting quote character
+                # passed in.  Handles all the Python escape
+                # sequences: all the single-character ones,
+                # octal, and the extra-special x u U N ones.
+                if buffer:
+                    buffer_clear()
+                quote = c
+                buffer_append(quote)
+                backslash = False
+                for c in i:
+                    if c == '\\':
+                        backslash = not backslash
+                        continue
+                    if backslash:
+                        buffer_append('\\')
+                    elif c == quote:
+                        buffer_append(quote)
+                        break
+                    buffer_append(c)
+                    backslash = False
+
+                s = ast.literal_eval(empty_string_join(buffer))
+                yield (STRING, s)
                 continue
 
-            if token in triple_quote_tokens:
+            if (token is TRIPLE_SINGLE_QUOTE) or (token is TRIPLE_DOUBLE_QUOTE):
                 # triple quote MUST be last thing on line (except possibly-ignored trailing whitespace)
                 trailing = i.drain()
                 if trailing and not trailing.isspace():
                     raise ValueError("tokenizer found triple-quote followed by non-whitespace string " + repr(trailing))
                 yield t
-                # don't yield trailing whitespace here--we never do anywhere else!
-                # if trailing and not suppress_whitespace:
-                #     yield WHITESPACE, trailing
                 return
 
-            if token in left_bracket_tokens:
+            token_is_left_curly_brace = token is LEFT_CURLY_BRACE
+            if token_is_left_curly_brace or (token is LEFT_SQUARE_BRACKET):
                 # handle flattening [] and [   ] into a EMPTY_SQUARE_BRACKETS token
                 # (and similarly for {} and { } and EMPTY_CURLY_BRACES)
-                right_bracket = left_bracket_to_right_bracket[s]
-                characters = []
+                if token_is_left_curly_brace:
+                    right_bracket = '}'
+                    empty_brackets = (EMPTY_CURLY_BRACES, '{}')
+                else:
+                    right_bracket = ']'
+                    empty_brackets = (EMPTY_SQUARE_BRACKETS, '[]')
+                if buffer:
+                    buffer_clear()
                 for c in i:
                     if c.isspace():
-                        characters.append(c)
+                        buffer_append(c)
                         continue
                     if c == right_bracket:
-                        t = left_bracket_to_empty_bracket_token[s]
+                        t = empty_brackets
                         break
-                    i.push_c(c)
-                    i.push(characters)
+                    i_push_c(c)
+                    i_push(buffer)
                     break
 
             yield t
             continue
 
-        i.push_c(c)
-        s = parse_unquoted_string()
-        yield STRING, s
+        # Parse an unquoted string.
+        # Note that it *is* permitted to have spaces.
+        #
+        # Returns the unquoted string.
+        # If there were no characters to be read, returns an
+        # empty string.
+        # Note that trailing whitespace is stripped.
+        # (If you want trailing whitespace preserved,
+        # use a quoted string.)
+        #
+        # Stops the unquoted string at EOL, or the first
+        # character used in Perky syntax (=, {, [, etc).
+        # (If you need to use one of those inside your string,
+        # use a quoted string.)
+        if buffer:
+            buffer_clear()
+        i_push_c(c)
+        for c in i:
+            if c in non_quoting_operators:
+                i_push_c(c)
+                break
+            buffer_append(c)
+        s = empty_string_join(buffer).rstrip()
+        yield (STRING, s)
 
 
 class LineTokenizer:
@@ -339,6 +341,9 @@ class LineTokenizer:
     line either as a string, or as a sequence
     of tokens.
     """
+
+    # go-faster stripe!
+    __slots__ = ('_lines', 'suppress_whitespace', 'waiting', 'line_number', '_repr', 'i')
 
     def __init__(self, s, suppress_whitespace=True):
         lines = s.split("\n")
@@ -352,6 +357,8 @@ class LineTokenizer:
             repr_lines = repr_lines[:47] + "..."
         self._repr = f"<LineTokenizer {{self.line_number}}/{len(lines)} lines {repr_lines}>"
 
+        self.i = pushback_str_iterator('')
+
     def __repr__(self):
         return self._repr.format(self=self)
 
@@ -364,12 +371,12 @@ class LineTokenizer:
         if self._lines is None:
             return False
 
-        try:
-            self.waiting = next(self._lines)
-            return True
-        except StopIteration:
+        result = next(self._lines, _sentinel)
+        if result is _sentinel:
             self._lines = self.waiting = None
             return False
+        self.waiting = result
+        return True
 
     def next_line(self):
         """
@@ -388,9 +395,8 @@ class LineTokenizer:
         else:
             if self._lines is None:
                 return failure
-            try:
-                t = next(self._lines)
-            except StopIteration as e:
+            t = next(self._lines, _sentinel)
+            if t is _sentinel:
                 self._lines = None
                 return failure
 
@@ -414,15 +420,16 @@ class LineTokenizer:
         else:
             if self._lines is None:
                 return failure
-            try:
-                t = next(self._lines)
-            except StopIteration as e:
+            t = next(self._lines, _sentinel)
+            if t is _sentinel:
                 self._lines = None
                 return failure
 
         line_number, line = t
         self.line_number = line_number
-        tokens = list(tokenize(line, suppress_whitespace=self.suppress_whitespace))
+        i = self.i
+        i.reset(line)
+        tokens = list(tokenize(i, suppress_whitespace=self.suppress_whitespace))
         return (line_number, line, tokens)
 
     def __next__(self):

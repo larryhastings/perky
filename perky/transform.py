@@ -136,7 +136,7 @@ def map(o, fn):
 
 def _transform(o, schema, default):
     if isinstance(schema, dict):
-        raise_if_false(
+        raise_format_error_if_false(
             isinstance(o, dict),
             f"schema mismatch: schema is a dict, o should be a dict but is {o!r}",
             None, None)
@@ -150,13 +150,13 @@ def _transform(o, schema, default):
             result[name] = value
         return result
     if isinstance(schema, list):
-        raise_if_false(
+        raise_format_error_if_false(
             isinstance(o, list) and (len(schema) == 1),
             f"schema mismatch: schema is a list, o should be a list but is {o!r}",
             None, None)
         handler = schema[0]
         return [_transform(value, handler, default) for value in o]
-    raise_if_false(
+    raise_format_error_if_false(
         callable(schema),
         f"schema mismatch: schema values must be dict, list, or callable, got {schema!r}",
         None, None)
@@ -164,11 +164,11 @@ def _transform(o, schema, default):
 
 @export
 def transform(o, schema, default=None):
-    raise_if_false(
+    raise_format_error_if_false(
         isinstance(o, dict),
         "schema must be a dict",
         None, None)
-    raise_if_false(
+    raise_format_error_if_false(
         (not default) or callable(default),
         "default must be either None or a callable",
         None, None)
@@ -221,7 +221,7 @@ class _AnnotateSchema:
             self.tail.pop()
             return
 
-        raise_if_false(
+        raise_format_error_if_false(
             callable(value),
             "Malformed schema error: " + repr(name) + " = " + repr(value) + ", value is not dict, list, or callable!",
             None, None)

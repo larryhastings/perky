@@ -58,6 +58,17 @@ class TestUtility(unittest.TestCase):
         d2['l'] = list(range(1, 7))
         self.assertEqual(d, d2)
 
+    def test_invalid_inputs(self):
+        with self.assertRaises(TypeError):
+            perky.merge_dicts_and_lists({}, [])
+        with self.assertRaises(TypeError):
+            perky.merge_dicts_and_lists([], {})
+        with self.assertRaises(TypeError):
+            perky.merge_dicts_and_lists(3.14159, 66)
+        with self.assertRaises(TypeError):
+            perky.merge_dicts_and_lists({'a': [3]}, {'a': {'b': 3}})
+
+
 
 if __name__ == '__main__': # pragma: nocover
     unittest.main()

@@ -11,7 +11,7 @@ class FormatError(Exception):
     def __init__(self, message, tokens=None, line=None):
         self.message = message
         if tokens:
-            self.tokens = ''.join(t[1] for t in tokens)
+            self.tokens = ' '.join(f'"{t[1]}"' for t in tokens)
         else:
             self.tokens = tokens
         self.line = line
@@ -35,7 +35,7 @@ class FormatError(Exception):
 PerkyFormatError = FormatError
 
 
-def raise_if_false(expr, message, tokens, line):
+def raise_format_error_if_false(expr, message, tokens, line):
     if not expr:
         raise FormatError(message, tokens, line)
 
@@ -43,7 +43,8 @@ def raise_if_false(expr, message, tokens, line):
 def _merge_dicts_and_lists_recurse_dict(roots):
     sentinel = object()
     for root in roots:
-        assert isinstance(root, Mapping)
+        if not isinstance(root, Mapping):
+            raise TypeError(f"roots must be an iterable of Mapping objects, this root is not a Mapping {root!r}")
 
     d = {}
 
@@ -77,7 +78,8 @@ def _merge_dicts_and_lists_recurse_dict(roots):
                 value = root.get(key, sentinel)
                 if value is sentinel:
                     continue
-                assert isinstance(value, value_type)
+                if not isinstance(value, value_type):
+                    raise TypeError(f"value must be {value_type.__name__}, not {value!r}")
                 subroots.append(value)
             if is_mapping:
                 value = _merge_dicts_and_lists_recurse_dict(subroots)
@@ -89,7 +91,8 @@ def _merge_dicts_and_lists_recurse_dict(roots):
 def _merge_dicts_and_lists_recurse_list(roots):
     l = []
     for root in roots:
-        assert isinstance(root, Sequence) and not isinstance(root, str)
+        if (not isinstance(root, Sequence)) or isinstance(root, str):
+            raise TypeError(f"roots must be an iterable of Sequence objects that aren't strings, found root {root!r}")
         l.extend(root)
     return l
 
@@ -127,7 +130,8 @@ def merge_dicts_and_lists(*roots):
     root0 = roots[0]
     is_sequence = isinstance(root0, Sequence) and not isinstance(root0, str)
     is_mapping = isinstance(root0, Mapping)
-    assert is_sequence or is_mapping, f"expected t to be Mapping or Sequence, type of t is {type(t)}, t is {t!r}"
+    if not (is_sequence or is_mapping):
+        raise TypeError(f"expected roots to be Mapping or Sequence, first root is {root0!r}, type {type(root0)}")
 
     if len(roots) == 1:
         if is_mapping:

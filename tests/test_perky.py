@@ -205,6 +205,14 @@ list = [
             self.assertIn('hello', s)
             self.assertIn('hello', r)
 
+    def test_bad_mapping(self):
+        with self.assertRaises(perky.FormatError):
+            perky.loads("a = = 5")
+
+    def test_bad_sequence(self):
+        with self.assertRaises(perky.FormatError):
+            perky.loads("a = [\n  1\n  2\n  x = y\n]")
+
     def test_undefined_pragma(self):
         line = '=balloon'
         try:
@@ -223,7 +231,8 @@ list = [
         try:
             perky.loads(line)
         except perky.FormatError as e:
-            self.assertEqual(bad_pragma, e.tokens)
+            tokens = ' '.join(f'"{c}"' for c in bad_pragma)
+            self.assertEqual(tokens, e.tokens)
             self.assertIn('invalid pragma argument', str(e).lower())
             self.assertEqual(line, e.line)
             return
@@ -241,33 +250,14 @@ list = [
 
 # TODO: check if there are any other formats that would cause a failure
     def test_read_file(self):
-        test_input = perky.load("test_input.txt", encoding="utf-8")
+        test_input = perky.load("test_input.txt")
         self.assertIsNotNone(self, test_input)
 
-    def test_transform_dict(self):
-        o = {'a': '3', 'b': '5.0', 'c': ['1', '2', 'None', '3'], 'd': {'e': 'f', 'g': 'True'}}
-        schema = {'a': int, 'b': float, 'c': [perky.nullable(int)], 'd': {'e': str, 'g': perky.const}}
-        test_func = perky.transform(o, schema)
-        expected_dict = {'a': 3, 'b': 5.0, 'c': [1, 2, None, 3], 'd': {'e': 'f', 'g': True}}
-        self.assertEqual(expected_dict, test_func)
-
-    def test_transform_type_mismatch(self):
-        o = {'a': '3', 'b': '5.0', 'c': ['1', '2', 'None', '3'], 'd': {'e': 'f', 'g': 'True'}}
-        schema = [{'a': int, 'b': float, 'c': [perky.nullable(int)], 'd': {'e': str, 'g': perky.const}}]
-        with self.assertRaises(perky.PerkyFormatError):
-            perky.transform(o, schema)
-
-    def test_transform_bad_obj(self):
-        o2 = {'a': '44'}
-        schema = [{'a': int, 'b': float, 'c': [perky.nullable(int)], 'd': {'e': str, 'g': perky.const}}]
-        with self.assertRaises(perky.PerkyFormatError):
-            perky.transform(o2, schema)
-
-    def test_transform_none(self):
-        o = None
-        schema = {'a': int, 'b': float, 'c': [perky.nullable(int)], 'd': {'e': str, 'g': perky.const}}
-        with self.assertRaises(perky.PerkyFormatError):
-            perky.transform(o, schema)
+    def test_perky_include_bad_include_path(self):
+        with self.assertRaises(TypeError):
+            perky.load("include_list/main.pky", root=[], pragmas={'include':perky.pragma_include( 3.14159 )})
+        with self.assertRaises(TypeError):
+            perky.load("include_list/main.pky", root=[], pragmas={'include':perky.pragma_include( (3.14159,) )})
 
     def test_perky_include_list(self):
         with pushd("include_list"):

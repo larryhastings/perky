@@ -26,8 +26,13 @@ from perky.tokenize import TRIPLE_DOUBLE_QUOTE
 from perky.tokenize import EMPTY_CURLY_BRACES
 from perky.tokenize import EMPTY_SQUARE_BRACKETS
 
-from perky.tokenize import token_to_name, tokenize, LineTokenizer
+from perky.tokenize import LineTokenizer, pushback_str_iterator, tokenize
 
+def token_to_name(token):
+    result = perky.tokens.get(token, None)
+    if result is None:
+        return None
+    return result[0]
 
 want_print = False
 
@@ -42,7 +47,7 @@ class TestTokenizer(PerkyTestCase):
             tokens_with_values = set((STRING, COMMENT))
             expect_token = True
             for t in tokens_and_values:
-                is_token = token_to_name.get(t)
+                is_token = token_to_name(t)
                 if expect_token:
                     self.assertTrue(is_token, "expected token, got " + str(t))
                     tokens.append(t)
@@ -57,9 +62,9 @@ class TestTokenizer(PerkyTestCase):
                 else:
                     modifier = "suppressing" if suppress_whitespace else "keeping"
                     suffix = f", {modifier} whitespace tokens"
-                print(f"test #{test_number}{suffix}:\n  input:\n\t", repr(s), "\n  should match:\n\t", " ".join(x if x in token_to_name else repr(x) for x in tokens_and_values), end="\n\n")
+                print(f"test #{test_number}{suffix}:\n  input:\n\t", repr(s), "\n  should match:\n\t", " ".join(x if token_to_name(x) else repr(x) for x in tokens_and_values), end="\n\n")
                 test_number += 1
-            for tok, s in tokenize(s, suppress_whitespace=suppress_whitespace):
+            for tok, s in tokenize(pushback_str_iterator(s), suppress_whitespace=suppress_whitespace):
                 t = tokens.pop(0)
                 if want_print: # pragma: nocover
                     print("  [want]", t, end="")
@@ -73,7 +78,7 @@ class TestTokenizer(PerkyTestCase):
                     v = None
                 if want_print: # pragma: nocover
                     print("  [ got]", tok, repr(s))
-                self.assertEqual(tok, t, "token doesn't match, expected " + str(token_to_name[t]) + " got " + str(token_to_name.get(tok)))
+                self.assertEqual(tok, t, "token doesn't match, expected " + token_to_name(t) + " got " + token_to_name(tok))
                 if v is not None:
                     self.assertEqual(v, s, "token value doesn't match, expected " + repr(v) + " got " + repr(s))
 
@@ -103,10 +108,10 @@ class TestTokenizer(PerkyTestCase):
         test(r"x=[", STRING, "x", EQUALS, LEFT_SQUARE_BRACKET)
         test(r'''x="quoted string"''', STRING, "x", EQUALS, STRING, "quoted string")
 
-        test(r'''[]''', EMPTY_SQUARE_BRACKETS)
-        test(r'''[ ]''', EMPTY_SQUARE_BRACKETS)
-        test(r'''{}''', EMPTY_CURLY_BRACES)
-        test(r'''{ }''', EMPTY_CURLY_BRACES)
+        test(r'[]', EMPTY_SQUARE_BRACKETS)
+        test(r'[ ]', EMPTY_SQUARE_BRACKETS)
+        test(r'{}', EMPTY_CURLY_BRACES)
+        test(r'{ }', EMPTY_CURLY_BRACES)
 
         # and now, the big finish
         test(r""" 'quoted string' "quoted string 2" [ { = "quoted value" [ { ] } = "yes!" [{}] ''' """,
@@ -151,7 +156,7 @@ class TestTokenizer(PerkyTestCase):
         '''
         tokens = []
         with self.assertRaises(ValueError):
-            for t in tokenize(s):
+            for t in tokenize(pushback_str_iterator(s)):
                 tokens.append(t)
         self.assertEqual(tokens, [(STRING, 'x'), (EQUALS, '=')])
 

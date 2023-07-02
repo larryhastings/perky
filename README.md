@@ -237,13 +237,13 @@ if `root` is a mutable sequence, the top level of the Perky
 file is assumed to be a "sequence context"
 (a series of `value` lines).
 
-#### `load(filename, *, encoding="utf-8", pragmas=None, root=None)`
+#### `load(filename, *, pragmas=None, root=None)`
 
-Parses a file containing Perky-file-format settings.
+Loads a file containing Perky-file-format settings.
 Returns a dict.
 
-`encoding` specifies the encoding used to decode the
-data read from the file.
+The text in the file must be encoded using
+[UTF-8](https://en.wikipedia.org/wiki/UTF-8).
 
 If `root` is `None`, `loads` behaves as if you passed in an
 empty `dict`.
@@ -269,15 +269,15 @@ that are not dicts, lists, or strings will be converted
 to strings using str.
 Returns a string.
 
-#### `dump(filename, d, *, encoding="utf-8")`
+#### `dump(filename, d)`
 
 Converts a dictionary to a Perky-file-format string
 using `dump`, then writes it to *filename*.
 
-`encoding` specifies the encoding used to encode the
-data written to the file.
+The text in the file will be encoded using
+[UTF-8](https://en.wikipedia.org/wiki/UTF-8).
 
-#### `pragma_include(include_path=(".",), *, encoding='utf-8')`
+#### `pragma_include(include_path=(".",))`
 
 This function generates a pragma handler that adds "include"
 functionality.  "Including" means lexically inserting one Perky
@@ -310,9 +310,6 @@ include from different paths, e.g.:
         'include': pragma_include(include_dirs),
         'config': pragma_include(config_dirs),
     }
-
-`encoding` specifies the encoding used to decode the
-data read in from the included files.
 
 Notes:
 
@@ -409,6 +406,20 @@ Experimental.
 * Backslash quoting currently does "whatever your version of Python does".  Perhaps this should be explicit, and parsed by Perky itself?
 
 ### Changelog
+
+**0.9** *2023/07/02*
+
+Breaking API change: removed the `encoding` argument entirely.
+
+* From this point forward, Perky only supports reading and
+  writing files in
+  [UTF-8](https://en.wikipedia.org/wiki/UTF-8).
+  If you need to work with a different encoding, you'll have
+  to handle loading it form and saving it to disk yourself.
+  You'll have to use `loads` and `dumps` to handle converting
+  between Perky string format and native Python objects.
+
+* Optimized Perky some more.  It's roughly 11% faster than 0.8.1.
 
 **0.8.2** *2023/06/30*
 

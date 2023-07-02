@@ -13,84 +13,6 @@
 #
 # because right now it doesn't.
 
-# YOU NEED more TESTS THAT TEST dump()
-#
-# inside dicts (and similarly without "value =" inside lists)
-#
-# what if ''' or """ appears inside the triple-quoted string?
-#
-# turn if 0 module-level tests into real tests, dude
-#
-# explicit fns for xform schema vs function
-#  * need betterer names
-#
-# More library utility functions to manage
-# perky dict/lists:
-# * recursive "chain map"
-# * recursive merge
-#
-# Ensure you can use multiple Required objects
-# with the same function (e.g. "int")
-#
-# transform exceptions should print a breadcrumb
-# trail so we know where the erroneous value lives
-
-# TESTS NEEDED:
-#
-# make sure a quoted # works as a key
-#
-# ensure that unquoted string names can contain
-#   [ { ''' """ #
-# and unquoted string values can contain all those AND
-#   =
-
-# DONE
-#
-# this should fail:
-#    a = '''
-#       outdenting is fun
-#          '''
-#
-# allow
-#     value = []
-#     value = [ ]
-#     value = {}
-#     value = { }
-#
-# pragma parser:
-#  * handle quoted argument, e.g. =include " file starting with space.h"
-#  * reserve all other perky syntax features, complain if they are used
-#      * """ and '''
-#      * {
-#      * [
-#
-# add pragmas parameter to load / loads
-#     {"prefix": fn(d, suffix)}
-# prefix can be None in which case it's called for every comment line, first
-#   fn is called with current dict and the rest of the line after whitespace
-#     e.g.
-#     load(filename, {"include": includify })
-#   if filename contains the line
-#     #include foo.txt
-#   we'll call
-#     includify(d, "foo.txt")
-#
-#   * idea for pragma: allow it to be a dict entry?
-#     #include = filename
-#     #include = [
-#          ...
-#          ]
-#     I think this is maybe kinda icky.
-#
-# ALLOW EMPTY KEYS
-#       foo =
-# is currently an error, it should be an empty string
-#
-# Per-line callback function (for #include)
-#   * and, naturally, an example callback function
-#     for you to use (aka "#include")
-#
-
 """
 A simple, Pythonic file format.  Same interface as the
 "pickle" module (load, loads, dump, dumps).
@@ -122,8 +44,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
 OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
-
-__version__ = "0.8.2"
+__version__ = "0.9"
 
 import ast
 from collections.abc import MutableMapping, MutableSequence, Sequence
@@ -159,9 +80,8 @@ class Parser:
 
     def _parse_pragma(self, line):
         original_line = line
-        line = line.strip()
-        assert line[0] == '='
-        line = line[1:].strip()
+        # skip the leading '='
+        line = line.lstrip()[1:]
 
         fields = line.split(None, 1)
         pragma = fields[0].lower()
@@ -169,7 +89,7 @@ class Parser:
             argument = None
         else:
             argument = fields[1]
-            tokens = list(tokenize(argument))
+            tokens = list(tokenize(pushback_str_iterator(argument)))
             if len(tokens) != 1 or tokens[0][0] != STRING:
                 raise PerkyFormatError(f"Line {self.lt.line_number}: Invalid pragma argument {argument}", tokens, original_line)
             argument = tokens[0][1]
@@ -199,6 +119,10 @@ class Parser:
 
         keys_seen = set()
 
+        d_setitem = d.__setitem__
+        keys_seen_add = keys_seen.add
+        self_parse_value = self._parse_value
+
         for line_number, line, tokens in self.lt:
             if not tokens:
                 # whitespace line
@@ -208,34 +132,40 @@ class Parser:
                 self._parse_pragma(line)
                 continue
             if len(tokens) == 1:
-                token, argument = tokens[0]
                 if token is RIGHT_CURLY_BRACE:
                     break
                 if token is COMMENT:
                     continue
-            tokens = [t for t in tokens if t[0] is not WHITESPACE]
 
-            raise_if_false(
-                (2 <= len(tokens) <= 3) and tokens[0][0] is STRING and tokens[1][0] is EQUALS,
-                "Invalid token sequence: in mapping, expected STRING = or STRING == VALUE or }",
-                tokens, line)
-            key = tokens[0][1].strip()
-            raise_if_false(
-                key not in keys_seen,
-                f"Invalid Perky mapping: repeated key {key!r}",
-                tokens, line)
-            keys_seen.add(key)
+            if not (
+                (2 <= len(tokens) <= 3)
+                and (tokens[0][0] is STRING)
+                and (tokens[1][0] is EQUALS)
+                ):
+                raise FormatError(
+                    "Invalid token sequence: in mapping, expected STRING = or STRING == VALUE or }",
+                    tokens, line)
+
+            key = tokens[0][1]
+            if key in keys_seen:
+                raise FormatError(
+                    f"Invalid Perky mapping: repeated key {key!r}",
+                    tokens, line)
+            keys_seen_add(key)
             if len(tokens) == 3:
-                value = self._parse_value(tokens[2])
+                value = self_parse_value(tokens[2])
             else:
                 value = ""
-            d[key] = value
+            # d[key] = value
+            d_setitem(key, value)
 
         self.breadcrumbs.pop()
         return d
 
     def _read_sequence(self, starting_list=None):
         l = starting_list if starting_list is not None else []
+        l_append = l.append
+        self_parse_value = self._parse_value
         self.breadcrumbs.append(l)
         for line_number, line, tokens in self.lt:
             if not tokens:
@@ -245,48 +175,51 @@ class Parser:
             if token is EQUALS:
                 self._parse_pragma(line)
                 continue
-            raise_if_false(
-                len(tokens) == 1,
-                "Invalid token sequence: in sequence, expected one token",
-                tokens, line)
-            token, argument = tokens[0]
+            if len(tokens) != 1:
+                raise FormatError(
+                    "Invalid token sequence: in sequence, expected one token",
+                    tokens, line)
             if token is RIGHT_SQUARE_BRACKET:
                 break
             if token is COMMENT:
                 continue
-            value = self._parse_value(tokens[0])
-            l.append(value)
+            value = self_parse_value(tokens[0])
+            l_append(value)
         self.breadcrumbs.pop()
         return l
 
     def _read_textblock(self, marker):
         l = []
-        while self.lt:
-            line_number, line = self.lt.next_line()
+        l_append = l.append
+        lt = self.lt
+        next_line = self.lt.next_line
+        while lt:
+            line_number, line = next_line()
             line = line.rstrip()
             stripped = line.lstrip()
             if stripped == marker:
                 break
-            l.append(line)
+            l_append(line)
 
         prefix = line.partition(stripped)[0]
+        l2 = []
+        l2_append = l2.append
+        len_prefix = len(prefix)
         if prefix:
             # detect this error:
             #    a = '''
             #       outdenting sure is fun!
             #          '''
             for line in l:
-                raise_if_false(
-                    # line must either be empty or start with our prefix
-                    (not line) or line.startswith(prefix),
-                    "Format error: malformed line triple-quoted block",
-                    None, line)
+                # line must either be empty or start with our prefix
+                if line and (not line.startswith(prefix)):
+                    raise FormatError(
+                        "Format error: malformed line triple-quoted block",
+                        None, line)
+                line2 = line[len_prefix:]
+                l2_append(line2)
 
-        s = "\n".join(line for line in l)
-        # this one line does all the
-        # heavy lifting in textwrap.dedent()
-        s = re.sub(r'(?m)^' + prefix, '', s)
-        return s
+        return "\n".join(l2)
 
     def parse(self):
         if isinstance(self.root, MutableMapping):
@@ -353,7 +286,7 @@ class Serializer:
     def serialize(self, d):
         for name, value in d.items():
             if not isinstance(name, str):
-                raise TypeError("keys in Perky dicts must always be strings")
+                raise TypeError(f"keys in Perky dicts must always be strings, not {name!r}")
             self.line = self.quoted_string(name) + " = "
             self.serialize_value(value)
 
@@ -390,13 +323,13 @@ class Serializer:
             return self.serialize_list(value)
 
         if isinstance(value, bytes):
-            raise TypeError("Perky can't serialize bytes values, please decode to str")
+            raise TypeError(f"Perky can't serialize bytes value {value!r}, please decode to str")
 
         if not isinstance(value, str):
             value = str(value)
         if '\n' in value:
             return self.serialize_textblock(value)
-        if value == value.strip() and "".join(value.split()).isalnum():
+        if (value == value.strip()) and "".join(value.split()).isalnum():
             self.newline(value)
             return
         return self.serialize_quoted_string(value)
@@ -409,8 +342,8 @@ def loads(s, *, pragmas=None, root=None):
     return d
 
 @export
-def load(filename, *, encoding="utf-8", pragmas=None, root=None):
-    with open(filename, "rt", encoding=encoding) as f:
+def load(filename, *, pragmas=None, root=None):
+    with open(filename, "rt", encoding="utf-8") as f:
         return loads(f.read(), pragmas=pragmas, root=root)
 
 @export
@@ -421,18 +354,22 @@ def dumps(d):
 
 
 @export
-def dump(filename, d, *, encoding="utf-8"):
+def dump(filename, d):
     s = Serializer()
     s.serialize(d)
-    with open(filename, "wt", encoding=encoding) as f:
+    with open(filename, "wt", encoding="utf-8") as f:
         f.write(s.dumps())
 
 
 @export
-def pragma_include(include_path=(".",), *, encoding='utf-8'):
-    assert isinstance(include_path, Sequence)
-    assert not isinstance(include_path, str)
-    assert all(isinstance(s, str) for s in include_path)
+def pragma_include(include_path=(".",)):
+    include_path_ok = (
+        isinstance(include_path, Sequence)
+        and (not isinstance(include_path, str))
+        and all(isinstance(s, str) for s in include_path)
+        )
+    if not include_path_ok:
+        raise TypeError(f"include_path must be a sequence of strings, not {include_path!r}")
     include_path = tuple(include_path)
     def pragma_include(parser, filename):
         leaf = parser.breadcrumbs[-1]
@@ -444,7 +381,7 @@ def pragma_include(include_path=(".",), *, encoding='utf-8'):
                 break
         else:
             raise FileNotFoundError(filename)
-        load(path, pragmas=parser.pragmas, encoding=encoding, root=subroot)
+        load(path, pragmas=parser.pragmas, root=subroot)
         merged = merge_dicts_and_lists(leaf, subroot)
         # print(f"\n\nXXX merge_dicts_and_lists({leaf=}, {subroot=}) -> {merged=}\n\n")
         leaf.clear()
