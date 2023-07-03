@@ -449,7 +449,9 @@ Experimental.
 
 * API change: the `Parser` attribute `breadcrumbs` has been
   renamed to `stack`.  It was previously undocumented anyway,
-  though has now been documented.
+  though as of 0.9.1 it's now documented.  The previous name
+  `breadcrumbs` has been kept as an alias for now, but will
+  be removed before 1.0.
 * Added the `line_number` and `source` attributes to the
   `Parser` object, for the convenience of pragma handlers.
 * Refactored `parser_include` slightly.  No change to
