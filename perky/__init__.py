@@ -44,7 +44,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
 OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__version__ = "0.9"
+__version__ = "0.9.1"
 
 import ast
 from collections.abc import MutableMapping, MutableSequence, Sequence
@@ -70,13 +70,21 @@ def export(fn):
 
 class Parser:
 
-    def __init__(self, s, *, pragmas=None, root=None):
+    def __init__(self, s, *, pragmas=None, root=None, source=None):
         if not isinstance(s, str):
             raise TypeError('s must be str, not {type(s)}')
-        self.lt = LineTokenizer(s)
+        self.lt = LineTokenizer(s, source=source)
         self.pragmas = pragmas or {}
         self.root = root if root is not None else {}
-        self.breadcrumbs = []
+        self.source = source
+        # new name
+        self.stack = []
+        # old name
+        self.breadcrumbs = self.stack
+
+    @property
+    def line_number(self):
+        return self.lt.line_number
 
     def _parse_pragma(self, line):
         original_line = line
@@ -91,12 +99,12 @@ class Parser:
             argument = fields[1]
             tokens = list(tokenize(pushback_str_iterator(argument)))
             if len(tokens) != 1 or tokens[0][0] != STRING:
-                raise PerkyFormatError(f"Line {self.lt.line_number}: Invalid pragma argument {argument}", tokens, original_line)
+                raise PerkyFormatError(f"'{self.source}' line {self.line_number}: Invalid pragma argument {argument}", tokens, original_line)
             argument = tokens[0][1]
 
         fn = self.pragmas.get(pragma)
         if not fn:
-            raise PerkyFormatError(f"Line {self.lt.line_number}: Unknown pragma {pragma}", None, original_line)
+            raise PerkyFormatError(f"'{self.source}' line {self.line_number}: Unknown pragma {pragma}", None, original_line)
         fn(self, argument)
 
     def _parse_value(self, t):
@@ -115,7 +123,7 @@ class Parser:
 
     def _read_mapping(self, starting_dict=None):
         d = starting_dict if starting_dict is not None else {}
-        self.breadcrumbs.append(d)
+        self.stack.append(d)
 
         keys_seen = set()
 
@@ -159,14 +167,14 @@ class Parser:
             # d[key] = value
             d_setitem(key, value)
 
-        self.breadcrumbs.pop()
+        self.stack.pop()
         return d
 
     def _read_sequence(self, starting_list=None):
         l = starting_list if starting_list is not None else []
         l_append = l.append
         self_parse_value = self._parse_value
-        self.breadcrumbs.append(l)
+        self.stack.append(l)
         for line_number, line, tokens in self.lt:
             if not tokens:
                 # blank line
@@ -185,7 +193,7 @@ class Parser:
                 continue
             value = self_parse_value(tokens[0])
             l_append(value)
-        self.breadcrumbs.pop()
+        self.stack.pop()
         return l
 
     def _read_textblock(self, marker):
@@ -336,7 +344,7 @@ class Serializer:
 
 
 @export
-def loads(s, *, pragmas=None, root=None):
+def loads(s, *, pragmas=None, root=None, source="<string>"):
     p = Parser(s, pragmas=pragmas, root=root)
     d = p.parse()
     return d
@@ -344,7 +352,10 @@ def loads(s, *, pragmas=None, root=None):
 @export
 def load(filename, *, pragmas=None, root=None):
     with open(filename, "rt", encoding="utf-8") as f:
-        return loads(f.read(), pragmas=pragmas, root=root)
+        text = f.read()
+    p = Parser(text, pragmas=pragmas, root=root, source=filename)
+    d = p.parse()
+    return d
 
 @export
 def dumps(d):
@@ -355,10 +366,9 @@ def dumps(d):
 
 @export
 def dump(filename, d):
-    s = Serializer()
-    s.serialize(d)
+    text = dumps(d)
     with open(filename, "wt", encoding="utf-8") as f:
-        f.write(s.dumps())
+        f.write(text)
 
 
 @export
@@ -370,23 +380,29 @@ def pragma_include(include_path=(".",)):
         )
     if not include_path_ok:
         raise TypeError(f"include_path must be a sequence of strings, not {include_path!r}")
+
     include_path = tuple(include_path)
+
     def pragma_include(parser, filename):
-        leaf = parser.breadcrumbs[-1]
-        leaf_is_list = isinstance(parser.breadcrumbs[-1], list)
-        subroot = [] if leaf_is_list else {}
+        leaf = parser.stack[-1]
+        leaf_is_mapping = isinstance(leaf, Mapping)
+        included_root = {} if leaf_is_mapping else []
+
         for directory in include_path:
             path = normpath(join(directory, filename))
             if isfile(path):
                 break
         else:
             raise FileNotFoundError(filename)
-        load(path, pragmas=parser.pragmas, root=subroot)
-        merged = merge_dicts_and_lists(leaf, subroot)
-        # print(f"\n\nXXX merge_dicts_and_lists({leaf=}, {subroot=}) -> {merged=}\n\n")
-        leaf.clear()
-        if isinstance(leaf, list):
-            leaf.extend(merged)
-        else:
+
+        load(path, pragmas=parser.pragmas, root=included_root)
+        if leaf_is_mapping:
+            # we can't just leaf.update(loaded_root),
+            # we have to do this recursively.
+            merged = merge_dicts_and_lists(leaf, included_root)
+            leaf.clear()
             leaf.update(merged)
+        else:
+            leaf.extend(included_root)
+
     return pragma_include

@@ -186,22 +186,22 @@ class TestLineTokenizer(PerkyTestCase):
 
         input_lines = "\n".join(t[1] for t in expected_results)
         lt = LineTokenizer(input_lines)
-        self.assertIn('<LineTokenizer 0/2 lines [', repr(lt))
+        self.assertIn("<LineTokenizer '<string>' 0/2 lines [", repr(lt))
         self.assertTrue(lt)
         for expected in expected_results:
             self.assertTrue(lt)
             got = lt.tokens()
             line_number = expected[0]
-            self.assertIn(f'<LineTokenizer {line_number}/2 lines [', repr(lt))
+            self.assertIn(f"<LineTokenizer '<string>' {line_number}/2 lines [", repr(lt))
             self.assertEqual(expected, got)
 
         self.assertFalse(lt)
-        self.assertIn('<LineTokenizer 2/2 lines [', repr(lt))
+        self.assertIn("<LineTokenizer '<string>' 2/2 lines [", repr(lt))
         got = lt.next_line()
         self.assertEqual(got, (None, None))
 
         self.assertFalse(lt)
-        self.assertIn('<LineTokenizer 2/2 lines [', repr(lt))
+        self.assertIn("<LineTokenizer '<string>' 2/2 lines [", repr(lt))
         got = lt.next_line()
         self.assertEqual(got, (None, None))
 

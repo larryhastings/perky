@@ -343,19 +343,20 @@ class LineTokenizer:
     """
 
     # go-faster stripe!
-    __slots__ = ('_lines', 'suppress_whitespace', 'waiting', 'line_number', '_repr', 'i')
+    __slots__ = ('_lines', 'source', 'suppress_whitespace', 'waiting', 'line_number', '_repr', 'i')
 
-    def __init__(self, s, suppress_whitespace=True):
+    def __init__(self, s, suppress_whitespace=True, source='<string>'):
         lines = s.split("\n")
         self._lines = enumerate(lines, 1)
         self.suppress_whitespace = suppress_whitespace
         self.waiting = None
+        self.source = source
         self.line_number = 0
 
         repr_lines = str(lines[:5])
         if len(repr_lines) > 50:
             repr_lines = repr_lines[:47] + "..."
-        self._repr = f"<LineTokenizer {{self.line_number}}/{len(lines)} lines {repr_lines}>"
+        self._repr = f"<LineTokenizer '{self.source}' {{self.line_number}}/{len(lines)} lines {repr_lines}>"
 
         self.i = pushback_str_iterator('')
 

@@ -253,52 +253,22 @@ list = [
         test_input = perky.load("test_input.txt")
         self.assertIsNotNone(self, test_input)
 
-    def test_perky_include_bad_include_path(self):
-        with self.assertRaises(TypeError):
-            perky.load("include_list/main.pky", root=[], pragmas={'include':perky.pragma_include( 3.14159 )})
-        with self.assertRaises(TypeError):
-            perky.load("include_list/main.pky", root=[], pragmas={'include':perky.pragma_include( (3.14159,) )})
-
-    def test_perky_include_list(self):
-        with pushd("include_list"):
-            root = perky.load("main.pky", root=[], pragmas={'include':perky.pragma_include()})
-        self.assertEqual(root, list("abcd"))
-
-    def test_perky_include_dict(self):
-        with pushd("include_dict"):
-            root = perky.load("main.pky", pragmas={'include':perky.pragma_include()})
-        self.assertEqual(root, dict(zip("abcd", "1234")))
-
-    def test_perky_include_nested(self):
-        with pushd("include_nested"):
-            root = perky.load("main.pky", pragmas={'include':perky.pragma_include()})
-        self.assertEqual(root,
-            {
-                'a': '1',
-                'b': {
-                    'ba': '1',
-                    'bb': '2',
-                    'bc': '3',
-                    'bd': '4',
-                    'nested_dict': {
-                        'x': '3',
-                        'y': '2',
-                        'z': ['1', '2', '3', '4']
-                        },
-                    'nested_list': ['a', 'b', 'c'],
-                    },
-                'c': '3',
-                'd': '4'}
-            )
-
-    def test_perky_include_path(self):
-        with pushd("include_path"):
-            root = perky.load("dir1/main.pky", pragmas={'include':perky.pragma_include( ['dir1', 'dir2'] )})
-        self.assertEqual(root, dict(zip("abc", "345")))
-
     def test_perky_invalid_pragma(self):
         with self.assertRaises(perky.PerkyFormatError):
             root = perky.loads("a=b\n=include '''\nc=d\n", pragmas={'include':perky.pragma_include()})
+
+    def test_simple_pragma(self):
+        def pragma_reverse(parser, argument):
+            leaf = parser.breadcrumbs[-1]
+            leaf.append("".join(reversed(argument)))
+
+        expected = {'a': '1', 'b': ['c', 'd', 'edcba', 'e'], 'x': 'y'}
+        got = perky.loads("a = 1\nb = [\nc\nd\n=reverse abcde\ne\n]\nx = y", pragmas={'reverse': pragma_reverse})
+        self.assertEqual(expected, got)
+
+        expected = {'a': ['b', 'c', ' edcba ', 'x', 'y']}
+        got = perky.loads("a = [\nb\nc\n=reverse ' abcde '\nx\ny\n]\n", pragmas={'reverse': pragma_reverse})
+        self.assertEqual(expected, got)
 
     def test_perky_roundtrip(self):
         for i in range(1, 300):
@@ -417,7 +387,6 @@ class TestDump(unittest.TestCase):
         d = perky.loads(s)
         self.assertEqual(d['a'], '2022-06-15')
 
-
     def test_dump_to_file(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = pathlib.Path(tmpdir)
@@ -450,6 +419,50 @@ class TestPragmaInclude(unittest.TestCase):
 
         with self.assertRaises(FileNotFoundError):
             d = perky.loads(s, pragmas={'include': perky.pragma_include()})
+
+    def test_perky_include_bad_include_path(self):
+        with self.assertRaises(TypeError):
+            perky.load("include_list/main.pky", root=[], pragmas={'include':perky.pragma_include( 3.14159 )})
+        with self.assertRaises(TypeError):
+            perky.load("include_list/main.pky", root=[], pragmas={'include':perky.pragma_include( (3.14159,) )})
+
+    def test_perky_include_list(self):
+        with pushd("include_list"):
+            root = perky.load("main.pky", root=[], pragmas={'include':perky.pragma_include()})
+        self.assertEqual(root, list("abcd"))
+
+    def test_perky_include_dict(self):
+        with pushd("include_dict"):
+            root = perky.load("main.pky", pragmas={'include':perky.pragma_include()})
+        self.assertEqual(root, dict(zip("abcd", "1234")))
+
+    def test_perky_include_nested(self):
+        with pushd("include_nested"):
+            root = perky.load("main.pky", pragmas={'include':perky.pragma_include()})
+        self.assertEqual(root,
+            {
+                'a': '1',
+                'b': {
+                    'ba': '1',
+                    'bb': '2',
+                    'bc': '3',
+                    'bd': '4',
+                    'nested_dict': {
+                        'x': '3',
+                        'y': '2',
+                        'z': ['1', '2', '3', '4']
+                        },
+                    'nested_list': ['a', 'b', 'c'],
+                    },
+                'c': '3',
+                'd': '4'}
+            )
+
+    def test_perky_include_path(self):
+        with pushd("include_path"):
+            root = perky.load("dir1/main.pky", pragmas={'include':perky.pragma_include( ['dir1', 'dir2'] )})
+        self.assertEqual(root, dict(zip("abc", "345")))
+
 
 
 if __name__ == '__main__': # pragma: no cover

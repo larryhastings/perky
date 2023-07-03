@@ -21,6 +21,8 @@ Perky's features:
   1k lines of Python.  Fewer lines means fewer bugs!  (Hopefully!)
 * Flexible and extensible.  Perky permits extending the semantics of
   Perky files through a "pragma" mechanism.
+* Written in 100% pure Python, but still parses >300k lines per
+  second on a modern desktop.
 * Perky supports Python 3.6+, and passes its unit test suite with
   100% coverage (excluding the deprecated portions).
 
@@ -40,9 +42,11 @@ line.  Container objects use one line per internal value.
 
 You may nest lists and dicts as deeply as memory permits.
 
-Unlike Python itself, leading whitespace is ignored.  You
-can use leading whitespace to show structure if you like,
-but it's optional.
+Unlike Python itself, leading whitespace is ignored.
+You can use leading whitespace however you like but it's
+optional.  (Leading whitespace is preserved for
+triple-quoted strings, though with a clever syntax
+that allows outdenting the actual value.)
 
 Blank lines and comment lines (lines starting with `#`)
 are ignored, except inside triple-quoted strings.
@@ -116,7 +120,7 @@ the things Perky can do:
 One possibly-surprising design choice of Perky: the only
 natively supported values for the Perky parser are dicts,
 lists, and strings.  What about ints? floats? dates?
-booleans?
+booleans?  `NULL`?  `None`?
 
 Perky deliberately leaves that up to you.  As the Zen
 Of Python says:
@@ -146,7 +150,8 @@ remove it before 1.0.)
 
 A *pragma* is a metadata directive for the Perky parser.
 It's a way of sending instructions to the Perky parser from
-inside a bit of Perky text.
+inside a bit of Perky text.  In Perky, a pragma is a line
+that starts with an unquoted equals sign.
 
 Here's an example pragma directive:
 
@@ -187,14 +192,47 @@ The rules of pragmas:
 * To invoke a pragma, use `=` as the first non-whitespace character
   on a line.
 * The names of pragmas must always be lowercase.
-* You can't invoke a pragma inside a triple-quoted string.
+* You can invoke a pragma inside a sequence or mapping context.
+  But you can't invoke a pragma inside a triple-quoted string.
 * Pragmas can be "context-sensitive": they can be aware of where
   they are run inside a file, and e.g. modify the current dict
   or list.  The pragma function can see the entire current nested
   list of dicts and lists being parsed (via `parser.breadcrumbs`).
 * The rest of the line after the name of the pragma is the
-  pragma argument value, if any.  This is always a string.  It can
-  be a quoted string.
+  pragma argument value, if any.  This is always a string, which
+  can be either unquoted or single-quoted; if it's unquoted, it
+  can't contain any special symbols (`{ } = ''' """`).
+* If you want a line to start with an equals sign (a `value`, or
+  a `name=value`), but you *don't* want it to be a pragma, just
+  put quotes around it.  Likewise, if you want to use special
+  symbols in the pragma argument, just put (single) quotes around
+  it.
+
+### The Parser object
+
+Pragma functions recieve the Perky `Parser` object as an
+argument.  This object encapsulates all the current state
+of parsing the Perky file at the current time.  Here are
+the relevant attributes you may want to use from your
+pragma:
+
+* `parser.source` contains the source of the current
+  Perky text, either a filename or the string '<string>'.
+* `parser.line_number` contains the line number of
+  the current line being parsed.  The first line of the
+  Perky text is line 1.
+* `parser.stack` is a stack of references to collection
+  objects--the stack of nested dicts and lists from the
+  top to where we are now in the Perky file.
+  `parser.stack[0]` is always the root, and will be the
+  object returned by `load` or `loads`.  `parser.stack[-1]`
+  is always the current context the pragma was run in.
+  It can be either a list or a dict.  You should determine
+  which using
+  `isinstance(parser.stack[-1], collections.abc.Mapping)`;
+  if this is `True`, the current context is a mapping
+  context (a dict), and if this is `False` the current
+  context is a sequence context (a list).
 
 ### Parsing Errors
 
@@ -406,6 +444,18 @@ Experimental.
 * Backslash quoting currently does "whatever your version of Python does".  Perhaps this should be explicit, and parsed by Perky itself?
 
 ### Changelog
+
+**0.9.1** *2023/07/03*
+
+* API change: the `Parser` attribute `breadcrumbs` has been
+  renamed to `stack`.  It was previously undocumented anyway,
+  though has now been documented.
+* Added the `line_number` and `source` attributes to the
+  `Parser` object, for the convenience of pragma handlers.
+* Refactored `parser_include` slightly.  No change to
+  functionality or behavior, just a small code cleanup pass.
+* Added a "lines per second" output metric to the
+  benchmark program.
 
 **0.9** *2023/07/02*
 

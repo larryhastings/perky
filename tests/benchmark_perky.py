@@ -64,3 +64,5 @@ while True:
 
 print(f"{i} iterations in {delta} seconds.")
 print(f"{i/delta} iterations per second.")
+lines = len(TEST_INPUT_TEXT.strip().split("\n"))
+print(f"Oooh, call it {(lines*i)/delta} lines per second.")
