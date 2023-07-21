@@ -4,6 +4,7 @@
 
 ##### Copyright 2018-2023 by Larry Hastings
 
+[![# test badge](https://img.shields.io/github/actions/workflow/status/larryhastings/perky/test.yml?branch=master&label=test)](https://github.com/larryhastings/perky/actions/workflows/test.yml) [![# coverage badge](https://img.shields.io/github/actions/workflow/status/larryhastings/perky/coverage.yml?branch=master&label=coverage)](https://github.com/larryhastings/perky/actions/workflows/coverage.yml) [![# python versions badge](https://img.shields.io/pypi/pyversions/perky.svg?logo=python&logoColor=FBE072)](https://pypi.org/project/perky/)
 
 ### Overview
 
@@ -383,7 +384,9 @@ then run `transform` on that dictionary to
 convert the strings into native values.
 
 These functions are no longer maintained or supported,
-and will be removed before 1.0.
+are excluded from
+[coverage](https://github.com/nedbat/coveragepy)
+testing, and will be removed before 1.0.
 Why?  This part of Perky was always
 an experiment... and the experiment never really paid
 off.  There are better implementations of this idea,
@@ -444,6 +447,22 @@ Experimental.
 * Backslash quoting currently does "whatever your version of Python does".  Perhaps this should be explicit, and parsed by Perky itself?
 
 ### Changelog
+
+**0.9.2** *2023/07/22*
+
+Extremely minor release.  No new features or bug fixes.
+
+* Added GitHub Actions integration.  Tests and
+  coverage are run in the cloud after every checkin.
+  Thanks to [Dan Pope](https://github.com/lordmauve)
+  for gently walking me through this!
+* Fixed metadata in the `pyproject.toml` file.
+* Dropped support for Python 3.5.  (I assumed I already
+  had, but it was still listed as being supported
+  in the project metadata.)
+* Added badges for testing, coverage,
+  and supported Python versions.
+
 
 **0.9.1** *2023/07/03*
 
