@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # Part of the "perky" Python library
-# Copyright 2018-2023 by Larry Hastings
+# Copyright 2018-2024 by Larry Hastings
 
 import os
 from collections.abc import Mapping, Sequence

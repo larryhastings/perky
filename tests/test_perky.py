@@ -409,7 +409,7 @@ class TestPragmaInclude(unittest.TestCase):
                 f.write('x = y\n')
                 f.write('# an empty line!\n\n')
             s = "a = b\n=include 'x.pky'\nc = d"
-            d = perky.loads(s, pragmas={'include': perky.pragma_include(include_path=(str(tmpdir),))})
+            d = perky.loads(s, pragmas={'include': perky.pragma_include(include_path=(tmpdir,))})
             self.assertEqual(d['a'], 'b')
             self.assertEqual(d['c'], 'd')
             self.assertEqual(d['x'], 'y')
@@ -462,6 +462,25 @@ class TestPragmaInclude(unittest.TestCase):
         with pushd("include_path"):
             root = perky.load("dir1/main.pky", pragmas={'include':perky.pragma_include( ['dir1', 'dir2'] )})
         self.assertEqual(root, dict(zip("abc", "345")))
+
+    def test_perky_include_pathlib(self):
+        with pushd("include_path"):
+            root = perky.load("dir1/main.pky", pragmas={'include':perky.pragma_include( [pathlib.Path('dir1'), pathlib.Path('dir2')] )})
+        self.assertEqual(root, dict(zip("abc", "345")))
+
+    def test_perky_include_path_jailed(self):
+        with pushd("include_path"):
+            root = perky.load("dir1/main.pky", pragmas={'include':perky.pragma_include( ['dir1', 'dir2'], jail=True )})
+            self.assertEqual(root, dict(zip("abc", "345")))
+
+            with self.assertRaises(PermissionError):
+                perky.loads("a = b\n=include dir1/../../../secretfile\nc = d", pragmas={'include':perky.pragma_include( ['dir1', 'dir2'], jail=True )})
+
+            with self.assertRaises(PermissionError):
+                perky.loads("a = b\n=include /etc/passwd\nc = d", pragmas={'include':perky.pragma_include( ['dir1', 'dir2'], jail=True )})
+
+            with self.assertRaises(PermissionError):
+                perky.loads("a = b\n=include dir1/../dir2/../../secretfile\nc = d", pragmas={'include':perky.pragma_include( ['dir1', 'dir2'], jail=True )})
 
 
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # Part of the "perky" Python library
-# Copyright 2018-2023 by Larry Hastings
+# Copyright 2018-2024 by Larry Hastings
 
 # TODO:
 #
@@ -22,7 +22,7 @@ A simple, Pythonic file format.  Same interface as the
 # doc requirement
 copyright = """
 perky
-Copyright 2018-2023 by Larry Hastings
+Copyright 2018-2024 by Larry Hastings
 All rights reserved.
 
 Permission is hereby granted, free of charge, to any person obtaining a
@@ -44,12 +44,13 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
 OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
-__version__ = "0.9.1"
+__version__ = "0.9.3"
 
 import ast
 from collections.abc import MutableMapping, MutableSequence, Sequence
 import os.path
-from os.path import isfile, join, normpath
+from os.path import abspath, commonpath, isfile, join, normpath
+import pathlib
 import re
 import shlex
 import sys
@@ -372,16 +373,17 @@ def dump(filename, d):
 
 
 @export
-def pragma_include(include_path=(".",)):
+def pragma_include(include_path=(".",), jail=False):
+    Path = pathlib.Path
     include_path_ok = (
         isinstance(include_path, Sequence)
         and (not isinstance(include_path, str))
-        and all(isinstance(s, str) for s in include_path)
+        and all(isinstance(s, (str, Path)) for s in include_path)
         )
     if not include_path_ok:
-        raise TypeError(f"include_path must be a sequence of strings, not {include_path!r}")
+        raise TypeError(f"include_path must be a sequence of strings or pathlib.Path objects, not {include_path!r}")
 
-    include_path = tuple(include_path)
+    include_path = tuple(abspath(normpath(d)) for d in include_path)
 
     def pragma_include(parser, filename):
         leaf = parser.stack[-1]
@@ -389,7 +391,11 @@ def pragma_include(include_path=(".",)):
         included_root = {} if leaf_is_mapping else []
 
         for directory in include_path:
-            path = normpath(join(directory, filename))
+            path = abspath(normpath(join(directory, filename)))
+            if jail:
+                common = commonpath([directory, path])
+                if common != directory:
+                    raise PermissionError(f"path {filename!r} illegal, it attempts to escape {directory!r} jail")
             if isfile(path):
                 break
         else:
