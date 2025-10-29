@@ -2,7 +2,7 @@
 
 ## A friendly, easy, Pythonic text file format
 
-##### Copyright 2018-2023 by Larry Hastings
+##### Copyright 2018-2024 by Larry Hastings
 
 [![# test badge](https://img.shields.io/github/actions/workflow/status/larryhastings/perky/test.yml?branch=master&label=test)](https://github.com/larryhastings/perky/actions/workflows/test.yml) [![# coverage badge](https://img.shields.io/github/actions/workflow/status/larryhastings/perky/coverage.yml?branch=master&label=coverage)](https://github.com/larryhastings/perky/actions/workflows/coverage.yml) [![# python versions badge](https://img.shields.io/pypi/pyversions/perky.svg?logo=python&logoColor=FBE072)](https://pypi.org/project/perky/)
 
@@ -198,7 +198,7 @@ The rules of pragmas:
 * Pragmas can be "context-sensitive": they can be aware of where
   they are run inside a file, and e.g. modify the current dict
   or list.  The pragma function can see the entire current nested
-  list of dicts and lists being parsed (via `parser.breadcrumbs`).
+  list of dicts and lists being parsed (via `parser.stack`).
 * The rest of the line after the name of the pragma is the
   pragma argument value, if any.  This is always a string, which
   can be either unquoted or single-quoted; if it's unquoted, it
@@ -223,8 +223,8 @@ pragma:
   the current line being parsed.  The first line of the
   Perky text is line 1.
 * `parser.stack` is a stack of references to collection
-  objects--the stack of nested dicts and lists from the
-  top to where we are now in the Perky file.
+  objects--the stack of nested dicts and lists starting
+  at the top of the Perky file reflecting where we are now.
   `parser.stack[0]` is always the root, and will be the
   object returned by `load` or `loads`.  `parser.stack[-1]`
   is always the current context the pragma was run in.
@@ -267,13 +267,14 @@ strings to pragma handler functions.  Please see the
 If `root` is `None`, `loads` behaves as if you passed in an
 empty `dict`.
 
-If `root` is not `None`, it should be a container, either
-a mutable mapping (`dict`) or a mutable sequence (`list`).
+If `root` is not `None`, it should be a container object,
+either a mutable mapping (type `dict`) or a mutable sequence
+(type `list`).
 This affects how the data is parsed; if `root` is a
-mutable mapping, the top level of the Perky file must be
-a "mapping context" (a series of `name=value` lines);
-if `root` is a mutable sequence, the top level of the Perky
-file is assumed to be a "sequence context"
+mutable mapping object, the top level of the Perky file must
+be a "mapping context" (a series of `name=value` lines);
+if `root` is a mutable sequence object, the top level of the
+Perky file must be a "sequence context"
 (a series of `value` lines).
 
 #### `load(filename, *, pragmas=None, root=None)`
@@ -316,16 +317,22 @@ using `dump`, then writes it to *filename*.
 The text in the file will be encoded using
 [UTF-8](https://en.wikipedia.org/wiki/UTF-8).
 
-#### `pragma_include(include_path=(".",))`
+#### `pragma_include(include_path=(".",), jail=False)`
 
-This function generates a pragma handler that adds "include"
-functionality.  "Including" means lexically inserting one Perky
-file inside another, contextually at the spot where the pragma
-exists.
+This function creates and returns a pragma handler
+implementing "include" functionality for Perky.
+"Including" a file means lexically inserting one Perky
+file inside another, contextually at the spot where
+the pragma was invoked.
 
 For example, if you ran this:
 
-    d = loads("a=3\n" "=include data.pky\n" "c=5\n",
+    d = loads(
+        """
+        a=3
+        =include data.pky
+        c=5
+        """,
         pragmas={"include": pragma_include()},
         )
 
@@ -339,9 +346,38 @@ then `d` would be set to the dictionary:
     {'a': '3', 'b': '4', 'c': '5'}
 
 `pragma_include()` is not the pragma handler itself;
-it returns a function (a closure) which remembers the `include_path`
-you pass in.  This allows you to use it for multiple pragmas that
-include from different paths, e.g.:
+it returns a function (a closure) which remembers its
+configuration.
+
+The `include_path` parameter allows you to specify
+an ordered list of directories to search for the
+included file.  It must be an iterable (either
+`tuple` or `list`) of either `str` or
+[`pathlib.Path`](https://docs.python.org/3/library/pathlib.html)
+objects.  By default it only contains one
+entry, `'.'`, which means it will only include
+files on paths relative to the current directory.
+
+The `jail` parameter allows activating a security
+precaution.  By default `jail` is false, which means
+`pragma_include` will happily read any file anywhere
+on your disk:
+
+```
+   =include ../../../../../secretfile
+   =include ~/.history
+   =include /etc/passwd
+```
+
+If `jail` is true, `pragma_include` will only permit
+reading files in or under the directory (or directories)
+specified in `include_path`.  If an invocation of the
+pragma attempts to read a file outside these directories,
+`pragma_include` will raise a `PermissionError`.
+
+You may use multiple `pragma_include` handlers in the same
+`load` or `loads` call to permit including from different
+paths, e.g.:
 
     include_dirs = [appdirs.user_data_dir(myapp_name)]
     config_dirs = [appdirs.user_config_dir(myapp_name)]
@@ -349,22 +385,27 @@ include from different paths, e.g.:
         'include': pragma_include(include_dirs),
         'config': pragma_include(config_dirs),
     }
+    d = load(path, pragmas=pragmas)
 
 Notes:
 
-* The pragma handler is context-sensitive; the included
-file will be included as if it was copied-and-pasted replacing
+* This pragma handler is context-sensitive; the included
+file will behave as if it was copied-and-pasted replacing
 the pragma line.  Among other things, this means that if the pragma
 is invoked inside a sequence context, the included file must *start*
 in a sequence context.
 
-* When loading the file, the pragma handler will pass in the
-current pragma handlers into `load()`.  Among other things,
+* When loading the included file, the pragma handler will pass
+in the current pragma handlers into `load()`.  Among other things,
 this allows for recursive includes.
 
 * When including inside a dict context, you're explicitly permitted
 to re-define existing keys if they were previously defined in
-another file.
+another file.  This goes both ways; the inner (included) file can
+overwrite keys defined in the outer file (the file that included it),
+and the outer file can overwrite keys in the included file.  However,
+Perky still enforces the rule that a key can only be defined once
+in each context.
 
 * The default value for `include_path` only searches the
 current directory (`"."`).  If you override the default
@@ -448,6 +489,22 @@ Experimental.
 
 ### Changelog
 
+**0.9.3** *2024/09/18*
+
+Two new features, both for `pragma_include`.
+
+* `pragma_include` now accepts a new `jail` argument,
+  a boolean.  By default `jail` is false.  If `jail` is
+  true, the paths to included files must be in or under
+  the path from `include_paths`.
+* `pragma_include` now permits
+  [`pathlib.Path`](https://docs.python.org/3/library/pathlib.html)
+  objects in its `include_paths` parameter.
+  It still supports `str` objects too, of course.
+
+Also, the usual smattering of documentation improvements,
+and updated copyright notices to 2024.
+
 **0.9.2** *2023/07/22*
 
 Extremely minor release.  No new features or bug fixes.
@@ -467,9 +524,10 @@ Extremely minor release.  No new features or bug fixes.
 **0.9.1** *2023/07/03*
 
 * API change: the `Parser` attribute `breadcrumbs` has been
-  renamed to `stack`.  It was previously undocumented anyway,
-  though as of 0.9.1 it's now documented.  The previous name
-  `breadcrumbs` has been kept as an alias for now, but will
+  renamed to `stack`.  It was previously undocumented,
+  though as of this version it's now documented and officially
+  supported.  The previous (undocumented, unsupported)
+  name `breadcrumbs` has been kept as an alias for now, but will
   be removed before 1.0.
 * Added the `line_number` and `source` attributes to the
   `Parser` object, for the convenience of pragma handlers.
