@@ -2,7 +2,7 @@
 
 ## A friendly, easy, Pythonic text file format
 
-##### Copyright 2018-2024 by Larry Hastings
+##### Copyright 2018-2026 by Larry Hastings
 
 [![# test badge](https://img.shields.io/github/actions/workflow/status/larryhastings/perky/test.yml?branch=master&label=test)](https://github.com/larryhastings/perky/actions/workflows/test.yml) [![# coverage badge](https://img.shields.io/github/actions/workflow/status/larryhastings/perky/coverage.yml?branch=master&label=coverage)](https://github.com/larryhastings/perky/actions/workflows/coverage.yml) [![# python versions badge](https://img.shields.io/pypi/pyversions/perky.svg?logo=python&logoColor=FBE072)](https://pypi.org/project/perky/)
 
@@ -22,7 +22,15 @@ Perky's features:
   1k lines of Python.  Fewer lines means fewer bugs!  (Hopefully!)
 * Flexible and extensible.  Perky permits extending the semantics of
   Perky files through a "pragma" mechanism.
-* Written in 100% pure Python, but still parses >300k lines per
+* Great error messages.  When something's wrong with your file,
+  Perky tells you the file, line, *and column* of the problem--and
+  shows you the offending line, with a caret pointing at the trouble.
+* *Provenance*.  When you `load` a Perky file, every string in the
+  parsed result knows the file, line, and column it came from
+  ([**big.string**](https://github.com/larryhastings/big#the-big-string)
+  provenance)--so *your* error messages can point into the config
+  file too.  (Don't want it?  Pass a plain `str` to `loads`.)
+* Written in 100% pure Python, but still parses >450k lines per
   second on a modern desktop.
 * Perky supports Python 3.6+, and passes its unit test suite with
   100% coverage (excluding the deprecated portions).
@@ -147,6 +155,62 @@ I've deprecated the "transformation" submodule and will
 remove it before 1.0.)
 
 
+### Provenance
+
+Perky's error messages know the file, line, and column of the
+problem, and show you the offending line with a caret pointing
+at the trouble:
+
+```
+demo.pky line 3 column 1: Invalid Perky mapping: repeated key 'a'
+a = 3
+^
+```
+
+You get this for free--it works even when you pass in a plain `str`.
+
+But Perky goes further.  `load` always parses with *provenance*:
+every `str` in the parsed result is a
+[**big.string**](https://github.com/larryhastings/big#the-big-string)
+that knows the file, line, and column it came from.  (The same is
+true of `loads`, if you pass in a `big.string` instead of a `str`.)
+`big.string` is a subclass of `str`, so the values behave exactly
+like strings everywhere--but they carry two extra gifts:
+
+```Python
+>>> config = perky.load("demo.pky")
+>>> volume = config["volume"]
+>>> volume
+'11'
+>>> volume.where
+'demo.pky line 2 column 10'
+>>> print(volume.context)
+volume = 11
+         ^^
+```
+
+Which means *your* error messages can point into the config file too:
+
+```Python
+if not volume.isdigit():
+    sys.exit(f"{volume.where}: volume must be a number")
+```
+
+Perky's philosophy is that *you* transform your config values
+(see below)--which means *you* write the validation errors.
+Provenance means those errors can be just as good as Perky's own.
+
+Three notes.  First, values that pass through a transformation
+(e.g. `int(volume)`) naturally shed their provenance--provenance
+rides on the *strings*.  Second, every `big.string` keeps a
+reference to the original file text, so a long-lived config dict
+holds onto one copy of the file contents; for config files this
+is almost certainly fine, but it's worth knowing.  Third, if you
+don't want provenance, don't use `load`--read the file yourself
+and pass a plain `str` to `loads`.  Plain `str` in, plain `str`
+out--and the parse runs even faster than it did before Perky
+had provenance.
+
 ### Pragmas
 
 A *pragma* is a metadata directive for the Perky parser.
@@ -255,10 +319,21 @@ There are only a few errors possible when parsing a Perky text:
 
 ### API
 
-#### `loads(s, *, pragmas=None, root=None)`
+#### `loads(s, *, pragmas=None, root=None, source="<string>")`
 
 Parses a Perky-format string, and returns a container filled
 with the values parsed from that string.
+
+`source` is a human-readable description of where the string
+came from, used in error messages.
+
+The *type* of `s` decides whether the parsed values carry
+provenance.  If `s` is a
+[`big.string`](https://github.com/larryhastings/big#the-big-string),
+every `str` value in the parsed result is a `big.string` that
+knows its own source, line, and column.  If `s` is a plain `str`,
+the parsed values are plain `str` objects.  Please see the
+**Provenance** section of the documentation.
 
 If `pragmas` is not `None`, it must be a mapping of
 strings to pragma handler functions.  Please see the
@@ -284,6 +359,14 @@ Returns a dict.
 
 The text in the file must be encoded using
 [UTF-8](https://en.wikipedia.org/wiki/UTF-8).
+
+`load` always parses with provenance: every `str` value in the
+parsed result is a
+[`big.string`](https://github.com/larryhastings/big#the-big-string)
+that knows its own file, line, and column.  If you don't want
+provenance, read the file yourself and pass a plain `str` to
+`loads`.  Please see the **Provenance** section of the
+documentation.
 
 If `root` is `None`, `loads` behaves as if you passed in an
 empty `dict`.
@@ -488,6 +571,97 @@ Experimental.
 * Backslash quoting currently does "whatever your version of Python does".  Perhaps this should be explicit, and parsed by Perky itself?
 
 ### Changelog
+
+**0.10** *2026/07/16*
+
+Provenance!  Perky now knows where your data came from.
+
+* Perky now depends on [**big**](https://github.com/larryhastings/big)
+  (>= 0.14)--ruining Perky's no-dependencies streak.  But it's worth
+  it--read on!
+
+* Error messages got *great*.  Every parse error now reports the
+  file, line, and *column* of the problem, and shows the offending
+  line with a caret pointing at the trouble.  This works even for
+  plain `str` input.  (How?  Perky parses your plain str at full
+  speed, and if--and only if--parsing fails, it re-parses with
+  [`big.string`](https://github.com/larryhastings/big#the-big-string)
+  provenance purely to raise the better error.  Parsing is
+  deterministic, and the error path isn't the fast path.)
+
+* `load` now always parses with provenance: every `str` in the
+  parsed result is a `big.string` that knows its own file, line,
+  and column--so *your* validation errors can point into the
+  config file too.  The same goes for `loads`, if you pass in a
+  `big.string`; the *type* of the argument is the switch.  If you
+  don't want provenance, pass a plain `str` to `loads`--plain
+  `str` in, plain `str` out.  See the new **Provenance** section
+  of the documentation.
+
+* Claude Fable rewrote the tokenizer.  It reviewed the code, and
+  it was all like--naah, buddy, you're being dumb, this could be
+  *so* much better.  I guess it was right!
+
+  The tokenizer used to iterate character by
+  character, accumulating each token in a buffer; now it scans for
+  token boundaries and slices each token out of the line in one
+  step.  Tokens are now always slices of the input line--which is
+  how provenance rides along for free--and Perky got *faster*:
+  parsing a plain `str` now runs about 1.7x the speed of 0.9.4
+  (>450k lines/second on a modern desktop).  Parsing with full
+  provenance runs at about half the speed of 0.9.4 (still >140k
+  lines/second), but it only bothers with provenance if parsing
+  fails.  (The fast path is fast, and the error path is slow
+  but has better error messages.  No notes!)
+
+* Bugfix: a triple-quoted block whose closing marker was at column
+  zero *silently threw away its contents* and produced an empty
+  string.  Found while rewriting; we got a spicy new regression test.
+
+* API change: `tokenize()` now takes the line itself (a `str` or
+  `big.string`), not a `pushback_str_iterator`.  The tokenizer no
+  longer rewinds, so `pushback_str_iterator` is now unused and
+  deprecated; it'll be removed before 1.0.
+
+**0.9.4** *2026/07/03*
+
+A bug-fix release.  Every fix comes with a new regression test.
+
+* **The big one:** quoted strings mangled backslash escapes!  An escaped
+  backslash (`"\\"`) was silently eaten down to *nothing*, so `"x\\y"`
+  parsed as `xy` instead of `x\y`, and a Windows path like `"c:\\"` came
+  out as `c:`.  The tokenizer was trying to rewrite escapes by hand before
+  handing the string to `ast.literal_eval`, and got `\\` wrong.  Now it
+  passes the characters through verbatim and lets `literal_eval` do all the
+  unescaping, which is what it's good at.  Ordinary escapes (`\n`, `\t`,
+  `\"`) are unchanged.  (This is what I get for never writing a test with a
+  backslash in it--which is exactly how this survived to 0.9.3.)
+* Unterminated quoted strings used to leak `ast.literal_eval`'s raw
+  `SyntaxError`.  Now you get a clean Perky `ValueError` that says
+  "unterminated quoted string".
+* Unterminated triple-quoted blocks used to raise a baffling
+  `ValueError: empty separator` (or crash outright if the `"""` was the
+  last line in the file).  Now they raise a proper `FormatError`, naming the
+  source and line number.
+* `perky.loads()` accepted a `source` argument and then quietly ignored it,
+  so error messages always said `'None'` instead of your source name.
+  Fixed--it forwards `source` to the parser now.
+* `perky.dumps()` can now serialize a top-level *list*.  It always could
+  *parse* one (via `root=[]`), but trying to dump one raised an
+  `AttributeError`.  Now both directions work, and dumping a top-level
+  scalar gives a clear `TypeError` instead.
+* Fixed an error message that forgot its `f` prefix and printed the literal
+  text `{type(s)}`.  Whoops.
+* Documentation fix: the module docstring claimed Perky has "the same
+  interface as pickle."  It doesn't, quite--`perky.dump` takes the filename
+  *first*, unlike `json.dump` and `pickle.dump`.  The docstring now says so
+  instead of fibbing.
+* Fixed three(!) bugs in the deprecated `RecursiveChainMap`: `.get()` did
+  `key[self]` instead of `self[key]`; `.get()` also blew up with a
+  `NameError` on its sentinel check; and `__delitem__` demanded a spurious
+  second argument, so `del rcm[key]` never worked at all.  This code is
+  deprecated and slated for removal before 1.0, so consider it a fond
+  farewell fix.
 
 **0.9.3** *2024/09/18*
 

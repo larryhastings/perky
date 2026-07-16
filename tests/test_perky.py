@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 
+# Part of the "perky" Python library
+# Copyright 2018-2026 by Larry Hastings
+
 import perkytestlib
 perky_dir = perkytestlib.preload_local_perky()
 
+from big.types import string as big_string
 import datetime
 import os
 import pathlib
@@ -145,10 +149,50 @@ class TestParse(unittest.TestCase):
         self.assertEqual(result[key], value)
 
     def test_parse_unterminated_quoted_string(self):
-        with self.assertRaises(SyntaxError):
+        # an unterminated quoted string used to leak ast.literal_eval's
+        # raw SyntaxError; now it's a clean ValueError from the tokenizer.
+        with self.assertRaises(ValueError) as cm:
             perky.loads("""
 'quoted' = 'unterminated quoted string
 """)
+        self.assertIn("unterminated quoted string", str(cm.exception))
+
+    def test_parse_backslash_escapes(self):
+        # regression: an escaped backslash ("\\\\") used to be silently
+        # eaten down to nothing, corrupting the string.
+        self.assertEqual(perky.loads(r'a = "x\\y"'), {'a': 'x\\y'})
+        self.assertEqual(perky.loads(r'a = "c:\\"'), {'a': 'c:\\'})
+        # ordinary escapes still work
+        self.assertEqual(perky.loads(r'a = "line1\nline2"'), {'a': 'line1\nline2'})
+        self.assertEqual(perky.loads(r'a = "tab\there"'), {'a': 'tab\there'})
+        self.assertEqual(perky.loads(r'a = "say \"hi\""'), {'a': 'say "hi"'})
+        # and backslashes survive a full round-trip through dumps
+        original = {'path': 'C:\\Users\\larry', 'regex': r'\d+\.\d+'}
+        self.assertEqual(perky.loads(perky.dumps(original)), original)
+
+    def test_parse_unterminated_triple_quote(self):
+        # ran off the end of the file without a closing """ line;
+        # used to raise a cryptic ValueError (or NameError at EOF).
+        with self.assertRaises(perky.FormatError):
+            perky.loads('a = """\n    one\n    two\n')
+        with self.assertRaises(perky.FormatError):
+            perky.loads('a = """')
+
+    def test_loads_illegal_input_message(self):
+        # the TypeError message used to contain a literal "{type(s)}"
+        with self.assertRaises(TypeError) as cm:
+            perky.loads(3)
+        self.assertIn("int", str(cm.exception))
+        self.assertNotIn("{type(s)}", str(cm.exception))
+
+    def test_dumps_top_level_list(self):
+        # dumps used to only accept a top-level mapping, even though
+        # loads/load accept root=[].  now both directions work.
+        for value in ([], ['a', 'b'], ['a', {'c': '1'}, ['nested']]):
+            self.assertEqual(perky.loads(perky.dumps(value), root=[]), value)
+        # a top-level scalar is still an error, but a clean one
+        with self.assertRaises(TypeError):
+            perky.dumps("just a string")
 
     def test_parse_triple_quote(self):
         # ensure we have some real trailing whitespace.
@@ -200,8 +244,11 @@ list = [
         except perky.PerkyFormatError as e:
             s = str(e)
             r = repr(e)
-            self.assertIn('Format error: malformed line triple-quoted block', s)
-            self.assertIn('Format error: malformed line triple-quoted block', r)
+            self.assertIn('malformed line in triple-quoted block', s)
+            self.assertIn('malformed line in triple-quoted block', r)
+            # the error knows the line and column, and shows a caret
+            self.assertIn('column', s)
+            self.assertIn('^', s)
             self.assertIn('hello', s)
             self.assertIn('hello', r)
 
@@ -331,6 +378,17 @@ list = [
         i.push("nozzle")
         i.push(['Y', 'Z'])
         self.assertEqual(i.drain(), "YZnozzleXabcde")
+
+        # drain with an empty stack
+        i = perky.pushback_str_iterator("abcde")
+        self.assertEqual(i.drain(), "abcde")
+
+        # reset
+        i = perky.pushback_str_iterator("abc")
+        next(i)
+        i.push_c("X")
+        i.reset("xyz")
+        self.assertEqual(i.drain(), "xyz")
 
     def test_pushback_str_iterator_bool_regression(self):
         for push_in_the_middle in (False, True):
@@ -481,6 +539,106 @@ class TestPragmaInclude(unittest.TestCase):
 
             with self.assertRaises(PermissionError):
                 perky.loads("a = b\n=include dir1/../dir2/../../secretfile\nc = d", pragmas={'include':perky.pragma_include( ['dir1', 'dir2'], jail=True )})
+
+
+
+class TestProvenance(unittest.TestCase):
+    """
+    Tests for big.string provenance: values that know their
+    file, line, and column, and error messages with carets.
+    """
+    maxDiff = None
+
+    text = (
+        'name = value\n'
+        'quoted = "hello\\tworld"\n'
+        'nested = {\n'
+        '    x = 1\n'
+        '}\n'
+        )
+
+    def test_plain_str_in_plain_str_out(self):
+        d = perky.loads(self.text)
+        for key, value in d.items():
+            self.assertIs(type(key), str)
+            if isinstance(value, str):
+                self.assertIs(type(value), str)
+        self.assertIs(type(d['nested']['x']), str)
+
+    def test_big_string_in_big_string_out(self):
+        s = big_string(self.text, source='demo.pky')
+        d = perky.loads(s)
+        # unquoted value: a true slice of the source
+        value = d['name']
+        self.assertEqual(value, 'value')
+        self.assertIs(type(value), big_string)
+        self.assertEqual(value.where, 'demo.pky line 1 column 8')
+        # keys carry provenance too
+        key = next(k for k in d if k == 'name')
+        self.assertIs(type(key), big_string)
+        self.assertEqual(key.where, 'demo.pky line 1 column 1')
+        # decoded quoted value: escape decoded, position preserved
+        quoted = d['quoted']
+        self.assertEqual(quoted, 'hello\tworld')
+        self.assertIs(type(quoted), big_string)
+        self.assertEqual(quoted.where, 'demo.pky line 2 column 11')
+        # nested values work too
+        x = d['nested']['x']
+        self.assertEqual(x, '1')
+        self.assertEqual(x.where, 'demo.pky line 4 column 9')
+
+    def test_load_always_has_provenance(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            filename = os.path.join(dirname, 'test.pky')
+            with open(filename, 'wt', encoding='utf-8') as f:
+                f.write(self.text)
+            # load always parses with provenance
+            d = perky.load(filename)
+            self.assertIs(type(d['name']), big_string)
+            self.assertEqual(str(d['name'].where), f'{filename} line 1 column 8')
+            # the documented opt-out: read the file yourself,
+            # pass a plain str to loads
+            with open(filename, 'rt', encoding='utf-8') as f:
+                d = perky.loads(f.read())
+            self.assertIs(type(d['name']), str)
+
+    def test_error_messages_know_line_and_column(self):
+        # repeated key: the caret points at the second occurrence of the key
+        text = 'a = 1\nb = 2\na = 3\n'
+        with self.assertRaises(perky.FormatError) as cm:
+            perky.loads(text, source='demo.pky')
+        s = str(cm.exception)
+        self.assertIn('demo.pky line 3 column 1', s)
+        self.assertIn('repeated key', s)
+        self.assertIn('a = 3', s)
+        self.assertIn('^', s)
+
+    def test_error_unterminated_quoted_string(self):
+        with self.assertRaises(ValueError) as cm:
+            perky.loads('x = "no closing quote\n', source='demo.pky')
+        s = str(cm.exception)
+        self.assertIn('unterminated quoted string', s)
+        self.assertIn('demo.pky line 1 column 5', s)
+
+    def test_error_unterminated_textblock_points_at_opening(self):
+        text = 'a = 1\nblock = """\n  contents\n'
+        with self.assertRaises(perky.FormatError) as cm:
+            perky.loads(text, source='demo.pky')
+        s = str(cm.exception)
+        self.assertIn('unterminated triple-quoted block', s)
+        # anchored at the *opening* marker, line 2
+        self.assertIn('demo.pky line 2 column 9', s)
+
+    def test_source_may_be_a_path(self):
+        # Parser coerces a non-str source (e.g. pathlib.Path) to str
+        p = perky.Parser('a = 1', source=pathlib.Path('demo.pky'))
+        self.assertEqual(p.source, 'demo.pky')
+
+    def test_textblock_closing_marker_at_column_zero(self):
+        # regression test: this used to silently return ''
+        text = 'x = """\nabc\ndef\n"""\n'
+        d = perky.loads(text)
+        self.assertEqual(d['x'], 'abc\ndef')
 
 
 

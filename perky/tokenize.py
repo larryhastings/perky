@@ -2,10 +2,10 @@
 # tokenize.py
 #
 # Part of the "perky" Python library
-# Copyright 2018-2024 by Larry Hastings
+# Copyright 2018-2026 by Larry Hastings
 #
 
-import ast
+from big.builtin import literal_eval
 import collections
 import sys
 
@@ -77,6 +77,11 @@ class pushback_str_iterator:
     strings go on a stack, and are LIFO.)  Technically
     you can "push" any string, though in practice Perky
     only pushes back values yielded by the iterator.
+
+    Deprecated.  Perky's tokenizer no longer iterates
+    character by character, so it no longer needs pushback;
+    nothing in Perky uses this class anymore.  It'll be
+    removed before 1.0.
     """
 
     # look! a go-faster stripe!
@@ -178,44 +183,52 @@ class pushback_str_iterator:
         return s
 
 
-def tokenize(i, suppress_whitespace=True):
+def tokenize(s, suppress_whitespace=True):
     """
     Tokenizer for individual lines of a Perky file.
     Hand-written, designed specifically for Perky syntax.
 
-    i should be a pushback_str_iterator iterating over the
-    string you want tokenized.
+    s should be the line you want tokenized: a str,
+    or a big.string if you want the tokens to know
+    where they came from.
 
     This function is a generator; it yields tokens from
     the line until the line is exhausted.
+
+    Token values are always slices of s.  So if s is a
+    big.string, every token value--including the decoded
+    value of a quoted string--knows its own source, line,
+    and column.
 
     If suppress_whitespace is true (the default),
     this generator will not yield WHITESPACE tokens.
     (Trailing whitespace is generally discarded anyway.)
     """
 
-    # cache looked-up methods in fast locals
-    i_push = i.push
-    i_push_c = i.push_c
+    # We scan the plain-str version of the line--at C speed--
+    # and slice tokens out of s itself, by position.  Slicing
+    # is the only operation here that manufactures new string
+    # objects.  So when s is a big.string, we pay for one
+    # provenance-tracking object per *token*, instead of one
+    # per *character*.  (An earlier version of this tokenizer
+    # iterated over the line character by character, collecting
+    # characters in a buffer; iterating a big.string manufactures
+    # a provenance-tracking object for every character, which
+    # made that design roughly 3x slower.)
+    raw = str(s)
+    length = len(raw)
+    pos = 0
 
-    buffer = []
-    buffer_append = buffer.append
-    buffer_clear = buffer.clear
+    while pos < length:
+        c = raw[pos]
 
-    empty_string_join = "".join
-
-    for c in i:
         if c.isspace():
-            if buffer:
-                buffer_clear()
-            buffer_append(c)
-            for c in i:
-                if not c.isspace():
-                    i_push_c(c)
-                    break
-                buffer_append(c)
+            start = pos
+            pos += 1
+            while (pos < length) and raw[pos].isspace():
+                pos += 1
             if not suppress_whitespace:
-                yield (WHITESPACE, empty_string_join(buffer))
+                yield (WHITESPACE, s[start:pos])
             continue
 
         candidates = c_to_tokens.get(c, None)
@@ -223,87 +236,87 @@ def tokenize(i, suppress_whitespace=True):
             if len(candidates) == 1:
                 t = candidates[0]
             else:
+                # two candidates.  they're sorted longest first,
+                # and the shorter one is always exactly one character.
                 multi, single = candidates
-                multi_string = multi[1]
-                if buffer:
-                    buffer_clear()
-                buffer_append(c)
-                for c in i:
-                    buffer_append(c)
-                    if len(buffer) == len(multi_string):
-                        break
-                token = empty_string_join(buffer)
-                if token == multi_string:
-                    t = multi
-                else:
-                    t = single
-                    i_push(token)
-                    # now throw away c, we just pushed it again
-                    c = next(i)
+                t = multi if raw.startswith(multi[1], pos) else single
 
-            token, s = t
+            token, token_string = t
 
             if token is NUMBER_SIGN:
-                yield (COMMENT, i.drain())
+                yield (COMMENT, s[pos + 1:])
                 return
 
             if (token is SINGLE_QUOTE) or (token is DOUBLE_QUOTE):
-                # Parse a quoted string.  The ending quote
-                # must match the starting quote character
-                # passed in.  Handles all the Python escape
-                # sequences: all the single-character ones,
-                # octal, and the extra-special x u U N ones.
-                if buffer:
-                    buffer_clear()
-                quote = c
-                buffer_append(quote)
+                # Parse a quoted string.  The ending quote must match
+                # the starting quote character.  We scan *verbatim*--
+                # including backslash escapes--until the matching
+                # unescaped closing quote, then let literal_eval do
+                # all the unescaping.  literal_eval handles every
+                # Python escape sequence: the single-character ones,
+                # octal, and the special x u U N ones.
+                #
+                # The 'backslash' flag only tracks whether the next
+                # character is escaped, so that an escaped quote (\")
+                # doesn't end the string and an escaped backslash (\\)
+                # doesn't escape the character after it.  (An earlier
+                # version tried to rewrite escapes by hand here, and
+                # silently ate '\\' down to nothing.)
+                j = pos + 1
                 backslash = False
-                for c in i:
-                    if c == '\\':
-                        backslash = not backslash
-                        continue
+                terminated = False
+                while j < length:
+                    ch = raw[j]
+                    j += 1
                     if backslash:
-                        buffer_append('\\')
-                    elif c == quote:
-                        buffer_append(quote)
+                        backslash = False
+                        continue
+                    if ch == '\\':
+                        backslash = True
+                        continue
+                    if ch == c:
+                        terminated = True
                         break
-                    buffer_append(c)
-                    backslash = False
+                if not terminated:
+                    fragment = s[pos:]
+                    where = getattr(fragment, 'where', None)
+                    prefix = f"{where}: " if where else ""
+                    raise ValueError(f"{prefix}unterminated quoted string: {str(fragment)}")
 
-                s = ast.literal_eval(empty_string_join(buffer))
-                yield (STRING, s)
+                # big.types.literal_eval: if s is a big.string, the
+                # decoded value comes back knowing its own position.
+                yield (STRING, literal_eval(s[pos:j]))
+                pos = j
                 continue
 
             if (token is TRIPLE_SINGLE_QUOTE) or (token is TRIPLE_DOUBLE_QUOTE):
                 # triple quote MUST be last thing on line (except possibly-ignored trailing whitespace)
-                trailing = i.drain()
+                trailing = raw[pos + 3:]
                 if trailing and not trailing.isspace():
                     raise ValueError("tokenizer found triple-quote followed by non-whitespace string " + repr(trailing))
-                yield t
+                # yield the marker as a slice of s, not the constant--
+                # so an "unterminated triple-quoted block" error can
+                # point at the opening quote.
+                yield (token, s[pos:pos + 3])
                 return
 
-            token_is_left_curly_brace = token is LEFT_CURLY_BRACE
-            if token_is_left_curly_brace or (token is LEFT_SQUARE_BRACKET):
+            pos += len(token_string)
+
+            if (token is LEFT_CURLY_BRACE) or (token is LEFT_SQUARE_BRACKET):
                 # handle flattening [] and [   ] into a EMPTY_SQUARE_BRACKETS token
                 # (and similarly for {} and { } and EMPTY_CURLY_BRACES)
-                if token_is_left_curly_brace:
+                if token is LEFT_CURLY_BRACE:
                     right_bracket = '}'
                     empty_brackets = (EMPTY_CURLY_BRACES, '{}')
                 else:
                     right_bracket = ']'
                     empty_brackets = (EMPTY_SQUARE_BRACKETS, '[]')
-                if buffer:
-                    buffer_clear()
-                for c in i:
-                    if c.isspace():
-                        buffer_append(c)
-                        continue
-                    if c == right_bracket:
-                        t = empty_brackets
-                        break
-                    i_push_c(c)
-                    i_push(buffer)
-                    break
+                j = pos
+                while (j < length) and raw[j].isspace():
+                    j += 1
+                if (j < length) and (raw[j] == right_bracket):
+                    t = empty_brackets
+                    pos = j + 1
 
             yield t
             continue
@@ -322,16 +335,11 @@ def tokenize(i, suppress_whitespace=True):
         # character used in Perky syntax (=, {, [, etc).
         # (If you need to use one of those inside your string,
         # use a quoted string.)
-        if buffer:
-            buffer_clear()
-        i_push_c(c)
-        for c in i:
-            if c in non_quoting_operators:
-                i_push_c(c)
-                break
-            buffer_append(c)
-        s = empty_string_join(buffer).rstrip()
-        yield (STRING, s)
+        start = pos
+        pos += 1
+        while (pos < length) and (raw[pos] not in non_quoting_operators):
+            pos += 1
+        yield (STRING, s[start:pos].rstrip())
 
 
 class LineTokenizer:
@@ -343,7 +351,7 @@ class LineTokenizer:
     """
 
     # go-faster stripe!
-    __slots__ = ('_lines', 'source', 'suppress_whitespace', 'waiting', 'line_number', '_repr', 'i')
+    __slots__ = ('_lines', 'source', 'suppress_whitespace', 'waiting', 'line_number', '_repr')
 
     def __init__(self, s, suppress_whitespace=True, source='<string>'):
         lines = s.split("\n")
@@ -357,8 +365,6 @@ class LineTokenizer:
         if len(repr_lines) > 50:
             repr_lines = repr_lines[:47] + "..."
         self._repr = f"<LineTokenizer '{self.source}' {{self.line_number}}/{len(lines)} lines {repr_lines}>"
-
-        self.i = pushback_str_iterator('')
 
     def __repr__(self):
         return self._repr.format(self=self)
@@ -428,9 +434,7 @@ class LineTokenizer:
 
         line_number, line = t
         self.line_number = line_number
-        i = self.i
-        i.reset(line)
-        tokens = list(tokenize(i, suppress_whitespace=self.suppress_whitespace))
+        tokens = list(tokenize(line, suppress_whitespace=self.suppress_whitespace))
         return (line_number, line, tokens)
 
     def __next__(self):

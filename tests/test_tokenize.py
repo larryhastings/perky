@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+# Part of the "perky" Python library
+# Copyright 2018-2026 by Larry Hastings
+
 import perkytestlib
 perkytestlib.preload_local_perky()
 
@@ -26,7 +29,7 @@ from perky.tokenize import TRIPLE_DOUBLE_QUOTE
 from perky.tokenize import EMPTY_CURLY_BRACES
 from perky.tokenize import EMPTY_SQUARE_BRACKETS
 
-from perky.tokenize import LineTokenizer, pushback_str_iterator, tokenize
+from perky.tokenize import LineTokenizer, tokenize
 
 def token_to_name(token):
     result = perky.tokens.get(token, None)
@@ -64,7 +67,7 @@ class TestTokenizer(PerkyTestCase):
                     suffix = f", {modifier} whitespace tokens"
                 print(f"test #{test_number}{suffix}:\n  input:\n\t", repr(s), "\n  should match:\n\t", " ".join(x if token_to_name(x) else repr(x) for x in tokens_and_values), end="\n\n")
                 test_number += 1
-            for tok, s in tokenize(pushback_str_iterator(s), suppress_whitespace=suppress_whitespace):
+            for tok, s in tokenize(s, suppress_whitespace=suppress_whitespace):
                 t = tokens.pop(0)
                 if want_print: # pragma: nocover
                     print("  [want]", t, end="")
@@ -156,7 +159,7 @@ class TestTokenizer(PerkyTestCase):
         '''
         tokens = []
         with self.assertRaises(ValueError):
-            for t in tokenize(pushback_str_iterator(s)):
+            for t in tokenize(s):
                 tokens.append(t)
         self.assertEqual(tokens, [(STRING, 'x'), (EQUALS, '=')])
 

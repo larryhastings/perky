@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 
+# Part of the "perky" Python library
+# Copyright 2018-2026 by Larry Hastings
+
+
 import perkytestlib
 perkytestlib.preload_local_perky()
 

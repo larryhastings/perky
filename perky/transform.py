@@ -13,6 +13,8 @@
 ##############################################################################
 ##############################################################################
 
+import shlex
+
 from .utility import *
 
 __all__ = []
@@ -64,7 +66,7 @@ class RecursiveChainMap(dict):
         self.cache[key] = value
         self.deletes.discard(key)
 
-    def __delitem__(self, key, value):
+    def __delitem__(self, key):
         if key in self.deletes:
             self.__missing__(key)
         self.deletes.add(key)
@@ -73,8 +75,11 @@ class RecursiveChainMap(dict):
 
     def get(self, key, default=__sentinel):
         if key in self:
-            return key[self]
-        if default is not __sentinel:
+            return self[key]
+        # note: the default argument above reads the class-body local
+        # __sentinel, but inside the method body a bare __sentinel would
+        # mangle to a (nonexistent) global--so we must go through self.
+        if default is not self.__sentinel:
             return default
         raise self.__missing__(key)
 
@@ -96,6 +101,10 @@ class RecursiveChainMap(dict):
             keys = set(map) - self.deletes
             if keys:
                 return True
+        # (this method used to fall off the end here, returning
+        # None--and bool() raised TypeError on a RecursiveChainMap
+        # whose every key had been deleted)
+        return False
 
     def keys(self):
         yield from self

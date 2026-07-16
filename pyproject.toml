@@ -7,6 +7,7 @@ module = "perky"
 author = "Larry Hastings"
 author-email = "larry@hastings.org"
 home-page = "https://github.com/larryhastings/perky/"
+requires = ["big >= 0.14"]
 requires-python = ">=3.6"
 description-file = "README.md"
 classifiers = [
@@ -20,4 +21,18 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    ]
+
+[tool.coverage.run]
+# without an explicit source, coverage measures every non-stdlib
+# module the tests import--including perky's dependency, big.
+source = [
+    "perky",
+    "tests",
+    ]
+# benchmarks aren't tests; the suite doesn't run them
+omit = [
+    "*/benchmark_*",
     ]
